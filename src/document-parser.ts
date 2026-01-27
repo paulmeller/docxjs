@@ -2,7 +2,7 @@ import {
 	DomType, WmlTable, IDomNumbering,
 	WmlHyperlink, WmlSmartTag, IDomImage, OpenXmlElement, WmlTableColumn, WmlTableCell,
 	WmlTableRow, NumberingPicBullet, WmlText, WmlSymbol, WmlBreak, WmlNoteReference,
-	WmlAltChunk
+	WmlAltChunk, WmlTrackChange, WmlMoveRangeMarker
 } from './document/dom';
 import { DocumentElement } from './document/document';
 import { WmlParagraph, parseParagraphProperties, parseParagraphProperty } from './document/paragraph';
@@ -478,18 +478,56 @@ export class DocumentParser {
 		return sdtContent ? parser(sdtContent) : [];
 	}
 
-	parseInserted(node: Element, parentParser: Function): OpenXmlElement {
-		return <OpenXmlElement>{
+	parseInserted(node: Element, parentParser: Function): WmlTrackChange {
+		return {
 			type: DomType.Inserted,
+			changeType: 'inserted',
+			id: xml.attr(node, "id"),
+			author: xml.attr(node, "author"),
+			date: xml.attr(node, "date"),
 			children: parentParser(node)?.children ?? []
-		};
+		} as WmlTrackChange;
 	}
 
-	parseDeleted(node: Element, parentParser: Function): OpenXmlElement {
-		return <OpenXmlElement>{
+	parseDeleted(node: Element, parentParser: Function): WmlTrackChange {
+		return {
 			type: DomType.Deleted,
+			changeType: 'deleted',
+			id: xml.attr(node, "id"),
+			author: xml.attr(node, "author"),
+			date: xml.attr(node, "date"),
 			children: parentParser(node)?.children ?? []
-		};
+		} as WmlTrackChange;
+	}
+
+	parseMoveFrom(node: Element, parentParser: Function): WmlTrackChange {
+		return {
+			type: DomType.MoveFrom,
+			changeType: 'moveFrom',
+			id: xml.attr(node, "id"),
+			author: xml.attr(node, "author"),
+			date: xml.attr(node, "date"),
+			children: parentParser(node)?.children ?? []
+		} as WmlTrackChange;
+	}
+
+	parseMoveTo(node: Element, parentParser: Function): WmlTrackChange {
+		return {
+			type: DomType.MoveTo,
+			changeType: 'moveTo',
+			id: xml.attr(node, "id"),
+			author: xml.attr(node, "author"),
+			date: xml.attr(node, "date"),
+			children: parentParser(node)?.children ?? []
+		} as WmlTrackChange;
+	}
+
+	parseMoveRangeMarker(node: Element, type: DomType): WmlMoveRangeMarker {
+		return {
+			type: type,
+			id: xml.attr(node, "id"),
+			name: xml.attr(node, "name")
+		} as WmlMoveRangeMarker;
 	}
 
 	parseAltChunk(node: Element): WmlAltChunk {
@@ -533,6 +571,10 @@ export class DocumentParser {
 					result.children.push(new WmlCommentRangeEnd(xml.attr(el, "id")));
 					break;
 
+				case "commentReference":
+					result.children.push(new WmlCommentReference(xml.attr(el, "id")));
+					break;
+
 				case "oMath":
 				case "oMathPara":
 					result.children.push(this.parseMathElement(el));
@@ -548,6 +590,30 @@ export class DocumentParser {
 
 				case "del":
 					result.children.push(this.parseDeleted(el, e => this.parseParagraph(e)));
+					break;
+
+				case "moveFrom":
+					result.children.push(this.parseMoveFrom(el, e => this.parseParagraph(e)));
+					break;
+
+				case "moveTo":
+					result.children.push(this.parseMoveTo(el, e => this.parseParagraph(e)));
+					break;
+
+				case "moveFromRangeStart":
+					result.children.push(this.parseMoveRangeMarker(el, DomType.MoveFromRangeStart));
+					break;
+
+				case "moveFromRangeEnd":
+					result.children.push(this.parseMoveRangeMarker(el, DomType.MoveFromRangeEnd));
+					break;
+
+				case "moveToRangeStart":
+					result.children.push(this.parseMoveRangeMarker(el, DomType.MoveToRangeStart));
+					break;
+
+				case "moveToRangeEnd":
+					result.children.push(this.parseMoveRangeMarker(el, DomType.MoveToRangeEnd));
 					break;
 			}
 		}
@@ -575,6 +641,10 @@ export class DocumentParser {
 
 				case "rPr":
 					//TODO ignore
+					break;
+
+				case "pPrChange":
+					paragraph.formatChange = this.parseFormatChange(c, 'paragraph');
 					break;
 
 				default:
@@ -796,12 +866,64 @@ export class DocumentParser {
 					run.verticalAlign = values.valueOfVertAlign(c, true);
 					break;
 
+				case "rPrChange":
+					run.formatChange = this.parseFormatChange(c, 'run');
+					break;
+
 				default:
 					return false;
 			}
 
 			return true;
 		});
+	}
+
+	parseFormatChange(node: Element, context: 'run' | 'paragraph'): WmlTrackChange {
+		const formatDescriptions: string[] = [];
+
+		// Analyze the previous formatting (stored in the change element)
+		// to determine what changed
+		for (const el of xml.elements(node)) {
+			switch (el.localName) {
+				case "rPr":
+				case "pPr":
+					// Compare old properties - for now just note that formatting changed
+					for (const prop of xml.elements(el)) {
+						const desc = this.getFormatDescription(prop);
+						if (desc) formatDescriptions.push(desc);
+					}
+					break;
+			}
+		}
+
+		return {
+			type: DomType.FormatChange,
+			changeType: 'formatChange',
+			id: xml.attr(node, "id"),
+			author: xml.attr(node, "author"),
+			date: xml.attr(node, "date"),
+			formatDescription: formatDescriptions.length > 0
+				? `Previous: ${formatDescriptions.join(', ')}`
+				: 'Formatting changed',
+			children: []
+		} as WmlTrackChange;
+	}
+
+	getFormatDescription(prop: Element): string | null {
+		switch (prop.localName) {
+			case "b": return xml.boolAttr(prop, "val", true) ? "Bold" : "Not bold";
+			case "i": return xml.boolAttr(prop, "val", true) ? "Italic" : "Not italic";
+			case "u": return "Underline";
+			case "strike": return "Strikethrough";
+			case "sz": return `Size: ${xml.attr(prop, "val")}`;
+			case "color": return `Color: ${xml.attr(prop, "val")}`;
+			case "rFonts": return `Font: ${xml.attr(prop, "ascii") || xml.attr(prop, "hAnsi")}`;
+			case "highlight": return `Highlight: ${xml.attr(prop, "val")}`;
+			case "jc": return `Align: ${xml.attr(prop, "val")}`;
+			case "ind": return "Indentation";
+			case "spacing": return "Spacing";
+			default: return null;
+		}
 	}
 
 	parseVmlPicture(elem: Element): OpenXmlElement {

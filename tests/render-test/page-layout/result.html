@@ -1,7 +1,72 @@
 <!--docxjs library predefined styles--><style>
-.docx-wrapper { background: gray; padding: 30px; padding-bottom: 0px; display: flex; flex-flow: column; align-items: center; } 
-.docx-wrapper>section.docx { background: white; box-shadow: 0 0 10px rgba(0, 0, 0, 0.5); margin-bottom: 30px; }
-.docx { color: black; hyphens: auto; text-underline-position: from-font; }
+/* Design System Variables */
+:root, .docx-wrapper {
+    --docx-bg-primary: #ffffff;
+    --docx-bg-secondary: #f8f9fa;
+    --docx-bg-tertiary: #f1f3f4;
+    --docx-text-primary: #202124;
+    --docx-text-secondary: #5f6368;
+    --docx-text-muted: #80868b;
+    --docx-border-color: #dadce0;
+    --docx-border-light: #e8eaed;
+
+    --docx-color-inserted: #34a853;
+    --docx-color-inserted-bg: rgba(52, 168, 83, 0.12);
+    --docx-color-inserted-bg-hover: rgba(52, 168, 83, 0.18);
+    --docx-color-deleted: #ea4335;
+    --docx-color-deleted-bg: rgba(234, 67, 53, 0.12);
+    --docx-color-deleted-bg-hover: rgba(234, 67, 53, 0.18);
+    --docx-color-moved: #4285f4;
+    --docx-color-moved-bg: rgba(66, 133, 244, 0.12);
+    --docx-color-moved-bg-hover: rgba(66, 133, 244, 0.18);
+    --docx-color-format: #fbbc04;
+    --docx-color-format-bg: rgba(251, 188, 4, 0.12);
+    --docx-color-format-bg-hover: rgba(251, 188, 4, 0.18);
+    --docx-color-comment: #f59e0b;
+    --docx-color-comment-bg: rgba(245, 158, 11, 0.12);
+    --docx-color-accent: #1a73e8;
+
+    --docx-shadow-sm: 0 1px 2px rgba(60, 64, 67, 0.1);
+    --docx-shadow-md: 0 2px 8px rgba(60, 64, 67, 0.15);
+    --docx-shadow-lg: 0 4px 12px rgba(60, 64, 67, 0.2);
+    --docx-shadow-hover: 0 4px 12px rgba(60, 64, 67, 0.18);
+
+    --docx-radius-sm: 4px;
+    --docx-radius-md: 8px;
+    --docx-radius-lg: 12px;
+    --docx-transition-fast: 0.15s ease;
+    --docx-transition-normal: 0.2s ease;
+    --docx-transition-slow: 0.3s ease;
+}
+
+/* Dark mode variables */
+.dark .docx-wrapper, .docx-wrapper.dark,
+:root.dark .docx-wrapper {
+    --docx-bg-primary: #1e1e1e;
+    --docx-bg-secondary: #252526;
+    --docx-bg-tertiary: #2d2d30;
+    --docx-text-primary: #e8eaed;
+    --docx-text-secondary: #9aa0a6;
+    --docx-text-muted: #6b7280;
+    --docx-border-color: #3c4043;
+    --docx-border-light: #4b5563;
+    --docx-shadow-sm: 0 1px 3px rgba(0, 0, 0, 0.3);
+    --docx-shadow-md: 0 2px 8px rgba(0, 0, 0, 0.4);
+    --docx-shadow-lg: 0 4px 12px rgba(0, 0, 0, 0.5);
+    --docx-shadow-hover: 0 6px 16px rgba(0, 0, 0, 0.5);
+}
+
+/* Reduced motion */
+@media (prefers-reduced-motion: reduce) {
+    .docx-wrapper, .docx-wrapper * {
+        transition-duration: 0.01ms !important;
+        animation-duration: 0.01ms !important;
+    }
+}
+
+.docx-wrapper { background: var(--docx-bg-tertiary, gray); padding: 30px; padding-bottom: 0px; display: flex; flex-flow: column; align-items: center; }
+.docx-wrapper>section.docx { background: var(--docx-bg-primary, white); box-shadow: var(--docx-shadow-lg, 0 0 10px rgba(0, 0, 0, 0.5)); margin-bottom: 30px; }
+.docx { color: var(--docx-text-primary, black); hyphens: auto; text-underline-position: from-font; }
 section.docx { box-sizing: border-box; display: flex; flex-flow: column nowrap; position: relative; overflow: hidden; }
 section.docx>article { margin-bottom: auto; z-index: 1; }
 section.docx>footer { z-index: 1; }
@@ -77,4 +142,4 @@ p.docx_style18 span {
   min-height: 12.00pt;
   font-size: 12.00pt;
 }
-</style><div class="docx-wrapper"><section class="docx" style="padding: 56.7pt; width: 595.3pt; min-height: 841.9pt;"><article><p class="docx_normal"><span lang="en-US">page1</span></p></article></section><section class="docx" style="padding: 56.7pt; width: 841.9pt; min-height: 595.3pt;"><article><p class="docx_normal"><span lang="en-US">page2</span></p></article></section></div>
+</style><div class="docx-wrapper"><section class="docx" style="padding: 56.7pt; width: 595.3pt; min-height: 841.9pt;"><article><p class="docx_normal"><span lang="en-US">page1</span></p></article><article><p class="docx_normal"><span lang="en-US">page2</span></p></article></section></div>

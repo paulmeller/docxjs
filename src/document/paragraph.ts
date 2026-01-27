@@ -1,4 +1,4 @@
-import { OpenXmlElement } from "./dom";
+import { OpenXmlElement, WmlTrackChange } from "./dom";
 import { CommonProperties, Length, ns, parseCommonProperty } from "./common";
 import { Borders } from "./border";
 import { parseSectionProperties, SectionProperties } from "./section";
@@ -7,6 +7,7 @@ import { XmlParser } from "../parser/xml-parser";
 import { parseRunProperties, RunProperties } from "./run";
 
 export interface WmlParagraph extends OpenXmlElement, ParagraphProperties {
+	formatChange?: WmlTrackChange;
 }
 
 export interface ParagraphProperties extends CommonProperties {

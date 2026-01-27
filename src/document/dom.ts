@@ -56,6 +56,13 @@ export enum DomType {
 	Inserted = "inserted",
 	Deleted = "deleted",
 	DeletedText = "deletedText",
+	MoveFrom = "moveFrom",
+	MoveTo = "moveTo",
+	MoveFromRangeStart = "moveFromRangeStart",
+	MoveFromRangeEnd = "moveFromRangeEnd",
+	MoveToRangeStart = "moveToRangeStart",
+	MoveToRangeEnd = "moveToRangeEnd",
+	FormatChange = "formatChange",
 	Comment = "comment",
 	CommentReference = "commentReference",
 	CommentRangeStart = "commentRangeStart",
@@ -164,4 +171,19 @@ export interface NumberingPicBullet {
     id: number;
     src: string;
     style?: string;
+}
+
+export type TrackChangeType = 'inserted' | 'deleted' | 'moveFrom' | 'moveTo' | 'formatChange' | 'comment';
+
+export interface WmlTrackChange extends OpenXmlElement {
+    id: string;
+    author: string;
+    date: string;
+    changeType: TrackChangeType;
+    formatDescription?: string;  // For formatting changes: "Bold", "Font: Arial", etc.
+}
+
+export interface WmlMoveRangeMarker extends OpenXmlElement {
+    id: string;
+    name?: string;
 }

@@ -1,14 +1,35 @@
 <!DOCTYPE html>
-<html>
+<html lang="en">
 
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, minimum-scale=1.0, viewport-fit=cover" />
-    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/css/bootstrap.min.css" rel="stylesheet"
-        integrity="sha384-1BmE4kWBq78iYhFldvKuhfTAU6auU8tT94WrHftjDbrCEXSU1oBoqyl2QvZ6jIW3" crossorigin="anonymous">
-    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/js/bootstrap.bundle.min.js"
-        integrity="sha384-ka7Sk0Gln4gmtz2MlQnikT1wXgYsOg+OMhuP+IlRH9sENBO0LRn5q+8nbTov4+1p"
-        crossorigin="anonymous"></script>
+    <title>DOCX Preview Demo</title>
+    <!-- Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+        tailwind.config = {
+            darkMode: 'class',
+            theme: {
+                extend: {
+                    colors: {
+                        accent: {
+                            50: '#e8f0fe',
+                            100: '#d2e3fc',
+                            200: '#aecbfa',
+                            300: '#8ab4f8',
+                            400: '#669df6',
+                            500: '#1a73e8',
+                            600: '#1557b0',
+                            700: '#174ea6',
+                            800: '#185abc',
+                            900: '#1967d2'
+                        }
+                    }
+                }
+            }
+        }
+    </script>
     <!--dependencies-->
     <script crossorigin src="https://unpkg.com/jszip/dist/jszip.min.js"></script>
     <!--library-->
@@ -21,115 +42,341 @@
 
     <style>
         @media print {
-            .no-print {
-                display: none;
+            .print\:hidden {
+                display: none !important;
             }
-
             .overflow-auto {
                 overflow: initial !important;
             }
         }
+
+        /* Custom scrollbar */
+        .custom-scrollbar::-webkit-scrollbar {
+            width: 8px;
+            height: 8px;
+        }
+        .custom-scrollbar::-webkit-scrollbar-track {
+            background: transparent;
+        }
+        .custom-scrollbar::-webkit-scrollbar-thumb {
+            background: #d1d5db;
+            border-radius: 4px;
+        }
+        .dark .custom-scrollbar::-webkit-scrollbar-thumb {
+            background: #4b5563;
+        }
+        .custom-scrollbar::-webkit-scrollbar-thumb:hover {
+            background: #9ca3af;
+        }
+        .dark .custom-scrollbar::-webkit-scrollbar-thumb:hover {
+            background: #6b7280;
+        }
+
+        /* Toggle switch animation */
+        .toggle-switch {
+            transition: background-color 0.2s ease;
+        }
+        .toggle-switch::after {
+            transition: transform 0.2s ease;
+        }
+
+        /* Dropdown animation */
+        .dropdown-menu {
+            transform-origin: top right;
+            transition: opacity 0.15s ease, transform 0.15s ease;
+        }
+        .dropdown-menu.hidden {
+            opacity: 0;
+            transform: scale(0.95);
+            pointer-events: none;
+        }
+        .dropdown-menu:not(.hidden) {
+            opacity: 1;
+            transform: scale(1);
+        }
+
+        /* Focus styles */
+        .focus-ring:focus-visible {
+            outline: 2px solid #1a73e8;
+            outline-offset: 2px;
+        }
+        .dark .focus-ring:focus-visible {
+            outline-color: #8ab4f8;
+        }
+
+        /* Document container fallback background */
+        #document-container {
+            background: #e5e7eb;
+        }
+        .dark #document-container {
+            background: #1f2937;
+        }
+
+        /* Ensure docx wrapper inherits dark mode */
+        .dark .docx-wrapper {
+            --docx-bg-primary: #1e1e1e;
+            --docx-bg-secondary: #252526;
+            --docx-bg-tertiary: #374151;
+            --docx-text-primary: #e8eaed;
+            --docx-text-secondary: #9aa0a6;
+            --docx-border-color: #4b5563;
+        }
     </style>
 </head>
 
-<body class="vh-100 d-flex flex-column">
-    <div class="hstack bg-black no-print">
-        <a class="mx-auto p-2 text-white" href="https://war.ukraine.ua">Support Ukraine 🇺🇦</a>
+<body class="h-screen flex flex-col bg-gray-50 dark:bg-gray-950 text-gray-900 dark:text-gray-100 transition-colors duration-200">
+    <!-- Support banner -->
+    <div class="bg-gray-900 dark:bg-black text-white text-center py-2 text-sm print:hidden">
+        <a href="https://war.ukraine.ua" class="hover:underline focus-ring rounded">Support Ukraine 🇺🇦</a>
     </div>
 
-    <div class="hstack p-2 gap-2 bg-light no-print">
+    <!-- Toolbar -->
+    <header class="flex flex-wrap items-center gap-3 px-4 py-3 bg-white dark:bg-gray-900 border-b border-gray-200 dark:border-gray-800 print:hidden">
+        <!-- File input with styled button -->
+        <label class="cursor-pointer focus-within:ring-2 focus-within:ring-accent-500 focus-within:ring-offset-2 dark:focus-within:ring-offset-gray-900 rounded-lg">
+            <span class="inline-block px-4 py-2 bg-accent-500 hover:bg-accent-600 text-white rounded-lg font-medium text-sm transition-colors">
+                Choose File
+            </span>
+            <input type="file" class="sr-only" id="files" accept=".docx" />
+        </label>
+        <span id="fileName" class="text-sm text-gray-500 dark:text-gray-400 truncate max-w-[200px]">No file chosen</span>
 
-        <input id="files" type="file" class="form-control" style="width: 50ch;" accept=".docx" />
-        <div class="col-2">
-            <select id="testDocuments" class="form-select">
-                <option disabled selected>-- Test Documents --</option>
-            </select>
-        </div>
-        <button id="loadButton" class="btn btn-primary px-4">Reload</button>
-        <div class="dropdown">
-            <button class="btn btn-secondary dropdown-toggle" type="button" id="optionsMenuButton"
-                data-bs-toggle="dropdown" aria-expanded="false">
+        <!-- Test docs -->
+        <select id="testDocuments" class="px-3 py-2 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-sm focus:ring-2 focus:ring-accent-500 focus:border-transparent focus-ring transition-colors">
+            <option disabled selected>-- Test Documents --</option>
+        </select>
+
+        <button id="loadButton" class="px-4 py-2 bg-accent-500 hover:bg-accent-600 text-white rounded-lg font-medium text-sm transition-colors focus-ring">
+            Reload
+        </button>
+
+        <div class="w-px h-6 bg-gray-300 dark:bg-gray-700"></div>
+
+        <!-- Track Changes toggle -->
+        <label class="inline-flex items-center gap-2 cursor-pointer select-none">
+            <input type="checkbox" id="trackChangesToggle" class="sr-only peer">
+            <div class="toggle-switch relative w-10 h-5 bg-gray-200 dark:bg-gray-700 peer-checked:bg-accent-500 rounded-full
+                after:content-[''] after:absolute after:top-0.5 after:left-0.5 after:bg-white after:rounded-full
+                after:h-4 after:w-4 peer-checked:after:translate-x-5 after:shadow-sm
+                peer-focus-visible:ring-2 peer-focus-visible:ring-accent-500 peer-focus-visible:ring-offset-2 dark:peer-focus-visible:ring-offset-gray-900"></div>
+            <span class="text-sm font-medium">Track Changes</span>
+        </label>
+
+        <select id="trackChangesMode" class="px-3 py-2 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-sm focus:ring-2 focus:ring-accent-500 focus:border-transparent disabled:opacity-50 disabled:cursor-not-allowed focus-ring transition-colors" disabled>
+            <option value="inline">Inline</option>
+            <option value="margin">Margin</option>
+            <option value="floating">Floating</option>
+        </select>
+
+        <div class="w-px h-6 bg-gray-300 dark:bg-gray-700"></div>
+
+        <!-- Page Breaks toggle -->
+        <label class="inline-flex items-center gap-2 cursor-pointer select-none">
+            <input type="checkbox" id="pageBreaksToggle" class="sr-only peer" checked>
+            <div class="toggle-switch relative w-10 h-5 bg-gray-200 dark:bg-gray-700 peer-checked:bg-accent-500 rounded-full
+                after:content-[''] after:absolute after:top-0.5 after:left-0.5 after:bg-white after:rounded-full
+                after:h-4 after:w-4 peer-checked:after:translate-x-5 after:shadow-sm
+                peer-focus-visible:ring-2 peer-focus-visible:ring-accent-500 peer-focus-visible:ring-offset-2 dark:peer-focus-visible:ring-offset-gray-900"></div>
+            <span class="text-sm font-medium">Page Breaks</span>
+        </label>
+
+        <!-- Comments toggle -->
+        <label class="inline-flex items-center gap-2 cursor-pointer select-none">
+            <input type="checkbox" id="commentsToggle" class="sr-only peer">
+            <div class="toggle-switch relative w-10 h-5 bg-gray-200 dark:bg-gray-700 peer-checked:bg-accent-500 rounded-full
+                after:content-[''] after:absolute after:top-0.5 after:left-0.5 after:bg-white after:rounded-full
+                after:h-4 after:w-4 peer-checked:after:translate-x-5 after:shadow-sm
+                peer-focus-visible:ring-2 peer-focus-visible:ring-accent-500 peer-focus-visible:ring-offset-2 dark:peer-focus-visible:ring-offset-gray-900"></div>
+            <span class="text-sm font-medium">Comments</span>
+        </label>
+
+        <div class="flex-1"></div>
+
+        <!-- Dark mode toggle -->
+        <button id="darkModeToggle" class="p-2 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors focus-ring" title="Toggle dark mode">
+            <!-- Sun icon (shown in dark mode) -->
+            <svg class="w-5 h-5 hidden dark:block" fill="currentColor" viewBox="0 0 20 20">
+                <path fill-rule="evenodd" d="M10 2a1 1 0 011 1v1a1 1 0 11-2 0V3a1 1 0 011-1zm4 8a4 4 0 11-8 0 4 4 0 018 0zm-.464 4.95l.707.707a1 1 0 001.414-1.414l-.707-.707a1 1 0 00-1.414 1.414zm2.12-10.607a1 1 0 010 1.414l-.706.707a1 1 0 11-1.414-1.414l.707-.707a1 1 0 011.414 0zM17 11a1 1 0 100-2h-1a1 1 0 100 2h1zm-7 4a1 1 0 011 1v1a1 1 0 11-2 0v-1a1 1 0 011-1zM5.05 6.464A1 1 0 106.465 5.05l-.708-.707a1 1 0 00-1.414 1.414l.707.707zm1.414 8.486l-.707.707a1 1 0 01-1.414-1.414l.707-.707a1 1 0 011.414 1.414zM4 11a1 1 0 100-2H3a1 1 0 000 2h1z" clip-rule="evenodd"></path>
+            </svg>
+            <!-- Moon icon (shown in light mode) -->
+            <svg class="w-5 h-5 block dark:hidden" fill="currentColor" viewBox="0 0 20 20">
+                <path d="M17.293 13.293A8 8 0 016.707 2.707a8.001 8.001 0 1010.586 10.586z"></path>
+            </svg>
+        </button>
+
+        <!-- Options dropdown -->
+        <div class="relative" id="optionsDropdownContainer">
+            <button id="optionsButton" class="px-4 py-2 bg-gray-100 dark:bg-gray-800 hover:bg-gray-200 dark:hover:bg-gray-700 rounded-lg font-medium text-sm transition-colors focus-ring inline-flex items-center gap-1">
                 Options
+                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"></path>
+                </svg>
             </button>
-            <ul id="optionsMenu" class="dropdown-menu" aria-labelledby="optionsMenuButton">
-            </ul>
+            <div id="optionsMenu" class="dropdown-menu hidden absolute right-0 mt-2 w-64 bg-white dark:bg-gray-800 rounded-lg shadow-lg border border-gray-200 dark:border-gray-700 py-2 z-50 max-h-80 overflow-y-auto custom-scrollbar">
+            </div>
         </div>
-        <button id="saveTestButton" class="btn btn-primary px-4" style="display: none">Save Test</button>
-    </div>
+        <button id="saveTestButton" class="px-4 py-2 bg-accent-500 hover:bg-accent-600 text-white rounded-lg font-medium text-sm transition-colors focus-ring hidden">Save Test</button>
+    </header>
 
-    <div class="flex-grow-1 d-flex flex-row" style="height: 0;">
-        <details class="docx-thumbnails h-100 no-print">
-            <summary></summary>
-            <div id="thumbnails-container" class="docx-thumbnails-container"></div>
+    <!-- Main content -->
+    <div class="flex flex-1 min-h-0">
+        <!-- Thumbnails sidebar -->
+        <details class="docx-thumbnails h-full print:hidden bg-white dark:bg-gray-900 border-r border-gray-200 dark:border-gray-800 flex-shrink-0">
+            <summary class="cursor-pointer p-2 hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors"></summary>
+            <div id="thumbnails-container" class="docx-thumbnails-container overflow-y-auto custom-scrollbar"></div>
         </details>
-        <div id="document-container" class="overflow-auto flex-grow-1 h-100"></div>
+
+        <!-- Document container - background handled by docx-wrapper -->
+        <main id="document-container" class="flex-1 h-full overflow-auto custom-scrollbar"></main>
     </div>
 
     <script>
+        // Dark mode initialization
+        const darkModeToggle = document.getElementById('darkModeToggle');
+
+        // Init from localStorage or system preference
+        if (localStorage.getItem('darkMode') === 'true' ||
+            (!localStorage.getItem('darkMode') && window.matchMedia('(prefers-color-scheme: dark)').matches)) {
+            document.documentElement.classList.add('dark');
+        }
+
+        darkModeToggle.addEventListener('click', () => {
+            document.documentElement.classList.toggle('dark');
+            localStorage.setItem('darkMode', document.documentElement.classList.contains('dark'));
+        });
+
+        // Options dropdown toggle
+        const optionsButton = document.getElementById('optionsButton');
+        const optionsMenu = document.getElementById('optionsMenu');
+        const optionsContainer = document.getElementById('optionsDropdownContainer');
+
+        optionsButton.addEventListener('click', (e) => {
+            e.stopPropagation();
+            optionsMenu.classList.toggle('hidden');
+        });
+
+        document.addEventListener('click', (e) => {
+            if (!optionsContainer.contains(e.target)) {
+                optionsMenu.classList.add('hidden');
+            }
+        });
+
+        // File input name display
+        const fileInput = document.querySelector("#files");
+        const fileNameDisplay = document.getElementById('fileName');
+
+        fileInput.addEventListener("change", () => {
+            if (fileInput.files.length > 0) {
+                fileNameDisplay.textContent = fileInput.files[0].name;
+                fileNameDisplay.title = fileInput.files[0].name;
+            } else {
+                fileNameDisplay.textContent = 'No file chosen';
+                fileNameDisplay.title = '';
+            }
+        });
+
+        // Document rendering
         let currentDocument = null;
         const docxOptions = Object.assign(docx.defaultOptions, {
             debug: true,
             experimental: true,
-            hideWrapperOnPrint: true
+            hideWrapperOnPrint: true,
+            renderChanges: false,
+            trackChangesMode: 'inline',
+            breakPages: true,
+            ignoreLastRenderedPageBreak: false  // Show page breaks from Word's layout
         });
 
         const container = document.querySelector("#document-container");
-        const fileInput = document.querySelector("#files");
         const loadButton = document.querySelector("#loadButton");
         const testDocuments = document.querySelector("#testDocuments");
+        const trackChangesToggle = document.querySelector("#trackChangesToggle");
+        const trackChangesModeSelect = document.querySelector("#trackChangesMode");
+        const commentsToggle = document.querySelector("#commentsToggle");
+        const pageBreaksToggle = document.querySelector("#pageBreaksToggle");
 
         async function renderDocx(file) {
-            currentDocument = file; 
+            currentDocument = file;
 
-            if (!currentDocument) 
+            if (!currentDocument)
                 return;
-            
-            // optional, find and convert all tiff images 
-            let docxBlob = preprocessTiff(currentDocument); 
+
+            // optional, find and convert all tiff images
+            let docxBlob = preprocessTiff(currentDocument);
             // render document
             let res = await docx.renderAsync(docxBlob, container, null, docxOptions)
             // optional - render thumbnails
             renderThumbnails(container, document.querySelector("#thumbnails-container"));
             console.log(res);
         }
-        
+
         fileInput.addEventListener("change", ev => {
             renderDocx(fileInput.files[0]);
             testDocuments.selectedIndex = 0;
         });
-        loadButton.addEventListener("click", ev => renderDocx(fileInput.files[0]));
+        loadButton.addEventListener("click", ev => renderDocx(currentDocument));
+
+        // Track changes controls
+        trackChangesToggle.addEventListener("change", ev => {
+            docxOptions.renderChanges = trackChangesToggle.checked;
+            trackChangesModeSelect.disabled = !trackChangesToggle.checked;
+            renderDocx(currentDocument);
+        });
+
+        trackChangesModeSelect.addEventListener("change", ev => {
+            docxOptions.trackChangesMode = trackChangesModeSelect.value;
+            renderDocx(currentDocument);
+        });
+
+        commentsToggle.addEventListener("change", ev => {
+            docxOptions.renderComments = commentsToggle.checked;
+            renderDocx(currentDocument);
+        });
+
+        pageBreaksToggle.addEventListener("change", ev => {
+            docxOptions.breakPages = pageBreaksToggle.checked;
+            renderDocx(currentDocument);
+        });
 
         const menu = document.querySelector("#optionsMenu");
 
-        Object.keys(docxOptions).filter(key => !/className/i.test(key)).forEach(function(key) {
-            const listItem = document.createElement("li");
-            listItem.innerHTML = `
-            <div class="dropdown-item">
-                <div class="form-check">
-                    <label class="form-check-name"><input type="checkbox" class="form-check-input" ${docxOptions[key] ? 'checked' : ''}> ${key}</label>
-                </div>
-            </div>`;
+        // Filter to only show boolean options, excluding options that have dedicated controls
+        const excludeOptions = ['className', 'trackChangesMode', 'trackChangesMarginWidth', 'renderChanges', 'renderComments', 'breakPages', 'ignoreLastRenderedPageBreak'];
+        Object.keys(docxOptions)
+            .filter(key => !excludeOptions.some(exc => key.toLowerCase().includes(exc.toLowerCase())))
+            .filter(key => typeof docxOptions[key] === 'boolean')
+            .forEach(function (key) {
+                const listItem = document.createElement("div");
+                listItem.className = "px-3 py-2 hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors";
+                listItem.innerHTML = `
+                <label class="flex items-center gap-3 cursor-pointer select-none">
+                    <input type="checkbox" class="w-4 h-4 text-accent-500 bg-white dark:bg-gray-700 border-gray-300 dark:border-gray-600 rounded focus:ring-accent-500 focus:ring-2" ${docxOptions[key] ? 'checked' : ''}>
+                    <span class="text-sm">${key}</span>
+                </label>`;
 
-            const checkInput = listItem.querySelector("input");
+                const checkInput = listItem.querySelector("input");
 
-            checkInput.addEventListener("click", (e) => {
-                docxOptions[key] = checkInput.checked;
-                renderDocx(currentDocument);
+                checkInput.addEventListener("click", (e) => {
+                    docxOptions[key] = checkInput.checked;
+                    renderDocx(currentDocument);
+                });
+
+                menu.appendChild(listItem);
             });
-
-            menu.appendChild(listItem);
-        });
 
         container.addEventListener("dragover", ev => ev.preventDefault());
         container.addEventListener("drop", ev => {
             ev.preventDefault();
             renderDocx(ev.dataTransfer.files[0]);
+            if (ev.dataTransfer.files[0]) {
+                fileNameDisplay.textContent = ev.dataTransfer.files[0].name;
+                fileNameDisplay.title = ev.dataTransfer.files[0].name;
+            }
         });
 
         const selectedTest = new URLSearchParams(location.search).get('test');
 
-        for (let testName of ['text','underlines','text-break','line-spacing','numbering','page-layout','table','table-spans','footnote','header-footer','revision','equation'])
-        {
+        for (let testName of ['text', 'underlines', 'text-break', 'line-spacing', 'numbering', 'page-layout', 'table', 'table-spans', 'footnote', 'header-footer', 'revision', 'equation']) {
             var op = document.createElement("option");
             op.value = testName;
             op.label = testName;
@@ -142,7 +389,7 @@
         tryLoadTest(selectedTest);
 
         document.querySelector("#saveTestButton").addEventListener("click", async () => {
-            const file = await showSaveFilePicker({ types: [ { description: "HTML File", accept: { "text/html": [".html"] } }] });
+            const file = await showSaveFilePicker({ types: [{ description: "HTML File", accept: { "text/html": [".html"] } }] });
             const stream = await file.createWritable();
             await stream.write(container.innerHTML);
             await stream.close();
@@ -153,6 +400,8 @@
                 let resp = await fetch(`tests/render-test/${testName}/document.docx`);
                 renderDocx(await resp.blob());
                 fileInput.value = "";
+                fileNameDisplay.textContent = `${testName}/document.docx`;
+                fileNameDisplay.title = `${testName}/document.docx`;
             }
         }
     </script>

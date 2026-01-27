@@ -2,6 +2,8 @@ import { WordDocument } from './word-document';
 import { DocumentParser } from './document-parser';
 import { HtmlRenderer } from './html-renderer';
 
+export type TrackChangesMode = 'inline' | 'margin' | 'floating';
+
 export interface Options {
     inWrapper: boolean;
     hideWrapperOnPrint: boolean;
@@ -22,6 +24,8 @@ export interface Options {
 	renderChanges: boolean;
     renderComments: boolean;
     renderAltChunks: boolean;
+    trackChangesMode: TrackChangesMode;
+    trackChangesMarginWidth: string;
 }
 
 export const defaultOptions: Options = {
@@ -43,7 +47,9 @@ export const defaultOptions: Options = {
 	useBase64URL: false,
 	renderChanges: false,
     renderComments: false,
-    renderAltChunks: true
+    renderAltChunks: true,
+    trackChangesMode: 'inline',
+    trackChangesMarginWidth: '220px'
 }
 
 export function parseAsync(data: Blob | any, userOptions?: Partial<Options>): Promise<any>  {

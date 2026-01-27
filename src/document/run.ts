@@ -1,11 +1,12 @@
 import { XmlParser } from "../parser/xml-parser";
 import { CommonProperties, parseCommonProperty } from "./common";
-import { OpenXmlElement } from "./dom";
+import { OpenXmlElement, WmlTrackChange } from "./dom";
 
 export interface WmlRun extends OpenXmlElement, RunProperties {
     id?: string;
     verticalAlign?: string;
-	fieldRun?: boolean;  
+	fieldRun?: boolean;
+	formatChange?: WmlTrackChange;
 }
 
 export interface RunProperties extends CommonProperties {

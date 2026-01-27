@@ -4,7 +4,10 @@ import {
 	WmlHyperlink, IDomImage, OpenXmlElement, WmlTableColumn, WmlTableCell, WmlText, WmlSymbol, WmlBreak, WmlNoteReference,
 	WmlSmartTag,
 	WmlAltChunk,
-	WmlTableRow
+	WmlTableRow,
+	WmlTrackChange,
+	WmlMoveRangeMarker,
+	TrackChangeType
 } from './document/dom';
 import { CommonProperties } from './document/common';
 import { Options } from './docx-preview';
@@ -40,6 +43,22 @@ interface Section {
 	pageBreak: boolean;
 }
 
+interface TrackChangeAnnotation {
+	id: string;
+	author: string;
+	date: string;
+	changeType: TrackChangeType;
+	previewText: string;
+	formatDescription?: string;
+	element?: HTMLElement;
+	contentElement?: HTMLElement;
+}
+
+interface TrackChangeEntry {
+	annotation: TrackChangeAnnotation;
+	contentElements: Node[];
+}
+
 declare const Highlight: any;
 
 type CellVerticalMergeType = Record<number, HTMLTableCellElement>;
@@ -70,6 +89,21 @@ export class HtmlRenderer {
 	commentHighlight: any;
 	commentMap: Record<string, Range> = {};
 
+	trackChangeMap: Record<string, TrackChangeEntry> = {};
+	trackChangeHighlights: {
+		inserted: any;
+		deleted: any;
+		moveFrom: any;
+		moveTo: any;
+		formatChange: any;
+	} = null;
+	currentMarginContainer: HTMLElement = null;
+	currentPageElement: HTMLElement = null;
+
+	// Floating mode: collect all annotations across pages
+	floatingTrackChangeMap: Record<string, TrackChangeEntry> = {};
+	floatingPanelElement: HTMLElement = null;
+
 	tasks: Promise<any>[] = [];
 	postRenderTasks: any[] = [];
 
@@ -83,10 +117,31 @@ export class HtmlRenderer {
 		this.rootSelector = options.inWrapper ? `.${this.className}-wrapper` : ':root';
 		this.styleMap = null;
 		this.tasks = [];
+		this.trackChangeMap = {};
 
 		if (this.options.renderComments && globalThis.Highlight) {
 			this.commentHighlight = new Highlight();
 		}
+
+		if (this.options.renderChanges && (this.options.trackChangesMode === 'margin' || this.options.trackChangesMode === 'floating') && globalThis.Highlight) {
+			this.trackChangeHighlights = {
+				inserted: new Highlight(),
+				deleted: new Highlight(),
+				moveFrom: new Highlight(),
+				moveTo: new Highlight(),
+				formatChange: new Highlight()
+			};
+		}
+
+		// Initialize floating mode collection
+		this.floatingTrackChangeMap = {};
+		// Clean up any existing floating panel from body
+		if (this.floatingPanelElement && this.floatingPanelElement.parentNode) {
+			this.floatingPanelElement.parentNode.removeChild(this.floatingPanelElement);
+		}
+		// Also clean up any orphaned floating panels
+		this.htmlDocument.querySelectorAll(`.${this.className}-track-changes-floating`).forEach(el => el.remove());
+		this.floatingPanelElement = null;
 
 		styleContainer = styleContainer || bodyContainer;
 
@@ -141,6 +196,14 @@ export class HtmlRenderer {
 
 		if (this.commentHighlight && options.renderComments) {
 			(CSS as any).highlights.set(`${this.className}-comments`, this.commentHighlight);
+		}
+
+		if (this.trackChangeHighlights && options.renderChanges && (options.trackChangesMode === 'margin' || options.trackChangesMode === 'floating')) {
+			(CSS as any).highlights.set(`${this.className}-tc-inserted`, this.trackChangeHighlights.inserted);
+			(CSS as any).highlights.set(`${this.className}-tc-deleted`, this.trackChangeHighlights.deleted);
+			(CSS as any).highlights.set(`${this.className}-tc-move-from`, this.trackChangeHighlights.moveFrom);
+			(CSS as any).highlights.set(`${this.className}-tc-move-to`, this.trackChangeHighlights.moveTo);
+			(CSS as any).highlights.set(`${this.className}-tc-format`, this.trackChangeHighlights.formatChange);
 		}
 
 		this.postRenderTasks.forEach(t => t());
@@ -301,8 +364,17 @@ export class HtmlRenderer {
 			}
 
 			if (props.pageSize) {
-				if (!this.options.ignoreWidth)
-					elem.style.width = props.pageSize.width;
+				if (!this.options.ignoreWidth) {
+					let width = props.pageSize.width;
+					// Expand page width for margin mode track changes
+					if (this.options.renderChanges && this.options.trackChangesMode === 'margin') {
+						const marginWidth = parseFloat(this.options.trackChangesMarginWidth) || 220;
+						const pageWidth = parseFloat(width) || 0;
+						const unit = width.replace(/[\d.]/g, '') || 'px';
+						width = `${pageWidth + marginWidth + 16}${unit}`;
+					}
+					elem.style.width = width;
+				}
 				if (!this.options.ignoreHeight)
 					elem.style.minHeight = props.pageSize.height;
 			}
@@ -328,19 +400,32 @@ export class HtmlRenderer {
 
 	renderSections(document: DocumentElement): HTMLElement[] {
 		const result = [];
+		const isMarginMode = this.options.renderChanges && this.options.trackChangesMode === 'margin';
+		const isFloatingMode = this.options.renderChanges && this.options.trackChangesMode === 'floating';
 
 		this.processElement(document);
 		const sections = this.splitBySection(document.children, document.props);
 		const pages = this.groupByPageBreaks(sections);
 		let prevProps = null;
 
-		for (let i = 0, l = pages.length; i < l; i++) {			
+		for (let i = 0, l = pages.length; i < l; i++) {
 			this.currentFootnoteIds = [];
+			this.trackChangeMap = {}; // Reset for each page
 
 			const section = pages[i][0];
 			let props = section.sectProps;
 			const pageElement = this.createPageElement(this.className, props);
+			this.currentPageElement = pageElement;
 			this.renderStyleValues(document.cssStyle, pageElement);
+
+			// Create margin container if in margin mode (not for floating mode)
+			let marginContainer: HTMLElement = null;
+
+			if (isMarginMode) {
+				marginContainer = this.createElement("aside", { className: `${this.className}-track-changes-margin` });
+				marginContainer.style.width = this.options.trackChangesMarginWidth;
+				this.currentMarginContainer = marginContainer;
+			}
 
 			this.options.renderHeaders && this.renderHeaderFooter(props.headerRefs, props,
 				result.length, prevProps != props, pageElement);
@@ -362,6 +447,23 @@ export class HtmlRenderer {
 
 			this.options.renderFooters && this.renderHeaderFooter(props.footerRefs, props,
 				result.length, prevProps != props, pageElement);
+
+			if (isMarginMode) {
+				// Append margin directly to page element (positioned absolutely)
+				pageElement.appendChild(marginContainer);
+				pageElement.classList.add(`${this.className}-has-track-changes`);
+
+				// Capture the current trackChangeMap for this page before it gets reset
+				const pageTrackChangeMap = { ...this.trackChangeMap };
+
+				// Schedule annotation rendering after DOM is ready
+				this.later(() => this.renderMarginAnnotationsFromMap(marginContainer, pageElement, pageTrackChangeMap));
+			}
+
+			if (isFloatingMode) {
+				// Collect all track changes into the floating map
+				Object.assign(this.floatingTrackChangeMap, this.trackChangeMap);
+			}
 
 			result.push(pageElement);
 			prevProps = props;
@@ -502,7 +604,10 @@ export class HtmlRenderer {
 		for (let s of sections) {
 			current.push(s);
 
-			if (this.options.ignoreLastRenderedPageBreak || s.pageBreak || this.isPageBreakSection(prev, s.sectProps))
+			// Create new page if:
+			// 1. breakPages is enabled AND there's a page break marker, OR
+			// 2. Section properties change (orientation/size)
+			if ((this.options.breakPages && s.pageBreak) || this.isPageBreakSection(prev, s.sectProps))
 				result.push(current = []);
 
 			prev = s.sectProps;
@@ -512,19 +617,176 @@ export class HtmlRenderer {
 	}
 
 	renderWrapper(children: HTMLElement[]) {
-		return this.createElement("div", { className: `${this.className}-wrapper` }, children);
+		const isFloatingMode = this.options.renderChanges && this.options.trackChangesMode === 'floating';
+
+		const wrapper = this.createElement("div", { className: `${this.className}-wrapper` }, children);
+
+		if (isFloatingMode) {
+			wrapper.classList.add(`${this.className}-has-floating-panel`);
+
+			// Create floating panel (positioned next to first page)
+			const floatingPanel = this.createElement("aside", {
+				className: `${this.className}-track-changes-floating`
+			});
+			floatingPanel.style.width = this.options.trackChangesMarginWidth;
+			this.floatingPanelElement = floatingPanel;
+
+			// Append to first page section so left:100% positions it next to the page
+			const firstPage = children[0];
+			if (firstPage) {
+				firstPage.style.position = 'relative';
+				firstPage.style.overflow = 'visible';
+				firstPage.appendChild(floatingPanel);
+			}
+
+			// Schedule annotation rendering after DOM is ready
+			this.later(() => this.renderFloatingAnnotations(floatingPanel, wrapper));
+		}
+
+		return wrapper;
+	}
+
+	renderFloatingAnnotations(floatingPanel: HTMLElement, wrapper: HTMLElement): void {
+		const annotations = Object.values(this.floatingTrackChangeMap)
+			.map(entry => entry.annotation)
+			.filter(a => a.contentElement);
+
+		if (annotations.length === 0) return;
+
+		// Get the reference point - top of the first page (floating panel's parent)
+		const firstPage = floatingPanel.parentElement;
+		if (!firstPage) return;
+		const pageRect = firstPage.getBoundingClientRect();
+
+		// Sort by vertical position of content relative to page
+		const sortedAnnotations = annotations.sort((a, b) => {
+			const rectA = a.contentElement.getBoundingClientRect();
+			const rectB = b.contentElement.getBoundingClientRect();
+			return rectA.top - rectB.top;
+		});
+
+		const GAP = 8;
+		let lastBottom = 0;
+
+		for (const annotation of sortedAnnotations) {
+			const annotEl = this.createAnnotationElement(annotation);
+
+			floatingPanel.appendChild(annotEl);
+			annotation.element = annotEl;
+
+			// Calculate position relative to the page top
+			const contentRect = annotation.contentElement.getBoundingClientRect();
+			const targetTop = contentRect.top - pageRect.top;
+			const actualTop = Math.max(targetTop, lastBottom);
+
+			annotEl.style.top = `${actualTop}px`;
+			lastBottom = actualTop + annotEl.offsetHeight + GAP;
+
+			// Click handler - highlight and scroll
+			const handleActivate = () => {
+				// Remove active class from all
+				floatingPanel.querySelectorAll(`.${this.className}-tc-annotation-active`).forEach(el => {
+					el.classList.remove(`${this.className}-tc-annotation-active`);
+				});
+				// Add active to clicked
+				annotEl.classList.add(`${this.className}-tc-annotation-active`);
+
+				annotation.contentElement?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+				annotation.contentElement?.classList.add(`${this.className}-tc-highlight`);
+				setTimeout(() => {
+					annotation.contentElement?.classList.remove(`${this.className}-tc-highlight`);
+				}, 2000);
+			};
+			annotEl.addEventListener('click', handleActivate);
+			// Keyboard accessibility: Enter/Space to activate
+			annotEl.addEventListener('keydown', (e: KeyboardEvent) => {
+				if (e.key === 'Enter' || e.key === ' ') {
+					e.preventDefault();
+					handleActivate();
+				}
+			});
+		}
 	}
 
 	renderDefaultStyle() {
 		var c = this.className;
+
+		// Design System CSS Variables
+		var designSystem = `
+/* Design System Variables */
+:root, .${c}-wrapper {
+    --docx-bg-primary: #ffffff;
+    --docx-bg-secondary: #f8f9fa;
+    --docx-bg-tertiary: #f1f3f4;
+    --docx-text-primary: #202124;
+    --docx-text-secondary: #5f6368;
+    --docx-text-muted: #80868b;
+    --docx-border-color: #dadce0;
+    --docx-border-light: #e8eaed;
+
+    --docx-color-inserted: #34a853;
+    --docx-color-inserted-bg: rgba(52, 168, 83, 0.12);
+    --docx-color-inserted-bg-hover: rgba(52, 168, 83, 0.18);
+    --docx-color-deleted: #ea4335;
+    --docx-color-deleted-bg: rgba(234, 67, 53, 0.12);
+    --docx-color-deleted-bg-hover: rgba(234, 67, 53, 0.18);
+    --docx-color-moved: #4285f4;
+    --docx-color-moved-bg: rgba(66, 133, 244, 0.12);
+    --docx-color-moved-bg-hover: rgba(66, 133, 244, 0.18);
+    --docx-color-format: #fbbc04;
+    --docx-color-format-bg: rgba(251, 188, 4, 0.12);
+    --docx-color-format-bg-hover: rgba(251, 188, 4, 0.18);
+    --docx-color-comment: #f59e0b;
+    --docx-color-comment-bg: rgba(245, 158, 11, 0.12);
+    --docx-color-accent: #1a73e8;
+
+    --docx-shadow-sm: 0 1px 2px rgba(60, 64, 67, 0.1);
+    --docx-shadow-md: 0 2px 8px rgba(60, 64, 67, 0.15);
+    --docx-shadow-lg: 0 4px 12px rgba(60, 64, 67, 0.2);
+    --docx-shadow-hover: 0 4px 12px rgba(60, 64, 67, 0.18);
+
+    --docx-radius-sm: 4px;
+    --docx-radius-md: 8px;
+    --docx-radius-lg: 12px;
+    --docx-transition-fast: 0.15s ease;
+    --docx-transition-normal: 0.2s ease;
+    --docx-transition-slow: 0.3s ease;
+}
+
+/* Dark mode variables */
+.dark .${c}-wrapper, .${c}-wrapper.dark,
+:root.dark .${c}-wrapper {
+    --docx-bg-primary: #1e1e1e;
+    --docx-bg-secondary: #252526;
+    --docx-bg-tertiary: #2d2d30;
+    --docx-text-primary: #e8eaed;
+    --docx-text-secondary: #9aa0a6;
+    --docx-text-muted: #6b7280;
+    --docx-border-color: #3c4043;
+    --docx-border-light: #4b5563;
+    --docx-shadow-sm: 0 1px 3px rgba(0, 0, 0, 0.3);
+    --docx-shadow-md: 0 2px 8px rgba(0, 0, 0, 0.4);
+    --docx-shadow-lg: 0 4px 12px rgba(0, 0, 0, 0.5);
+    --docx-shadow-hover: 0 6px 16px rgba(0, 0, 0, 0.5);
+}
+
+/* Reduced motion */
+@media (prefers-reduced-motion: reduce) {
+    .${c}-wrapper, .${c}-wrapper * {
+        transition-duration: 0.01ms !important;
+        animation-duration: 0.01ms !important;
+    }
+}
+`;
+
 		var wrapperStyle = `
-.${c}-wrapper { background: gray; padding: 30px; padding-bottom: 0px; display: flex; flex-flow: column; align-items: center; } 
-.${c}-wrapper>section.${c} { background: white; box-shadow: 0 0 10px rgba(0, 0, 0, 0.5); margin-bottom: 30px; }`;
+.${c}-wrapper { background: var(--docx-bg-tertiary, gray); padding: 30px; padding-bottom: 0px; display: flex; flex-flow: column; align-items: center; }
+.${c}-wrapper>section.${c} { background: var(--docx-bg-primary, white); box-shadow: var(--docx-shadow-lg, 0 0 10px rgba(0, 0, 0, 0.5)); margin-bottom: 30px; }`;
 		if (this.options.hideWrapperOnPrint) {
 			wrapperStyle = `@media not print { ${wrapperStyle} }`;
 		}
-		var styleText = `${wrapperStyle}
-.${c} { color: black; hyphens: auto; text-underline-position: from-font; }
+		var styleText = `${designSystem}${wrapperStyle}
+.${c} { color: var(--docx-text-primary, black); hyphens: auto; text-underline-position: from-font; }
 section.${c} { box-sizing: border-box; display: flex; flex-flow: column nowrap; position: relative; overflow: hidden; }
 section.${c}>article { margin-bottom: auto; z-index: 1; }
 section.${c}>footer { z-index: 1; }
@@ -538,12 +800,374 @@ section.${c}>footer { z-index: 1; }
 
 		if (this.options.renderComments) {
 			styleText += `
-.${c}-comment-ref { cursor: default; }
-.${c}-comment-popover { display: none; z-index: 1000; padding: 0.5rem; background: white; position: absolute; box-shadow: 0 0 0.25rem rgba(0, 0, 0, 0.25); width: 30ch; }
-.${c}-comment-ref:hover~.${c}-comment-popover { display: block; }
-.${c}-comment-author,.${c}-comment-date { font-size: 0.875rem; color: #888; }
+/* Comment Reference Badge */
+.${c}-comment-ref {
+    cursor: default;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    vertical-align: middle;
+    background: var(--docx-color-comment-bg, #fff9c4);
+    border-radius: var(--docx-radius-sm);
+    padding: 2px 6px;
+    margin-left: 2px;
+    transition: background-color var(--docx-transition-fast), transform var(--docx-transition-fast);
+}
+.${c}-comment-ref:hover {
+    background: var(--docx-color-format-bg-hover);
+    transform: scale(1.05);
+}
+.${c}-comment-ref svg { width: 14px; height: 14px; stroke: var(--docx-color-comment); fill: none; }
+
+/* Comment Popover */
+.${c}-comment-popover {
+    opacity: 0;
+    visibility: hidden;
+    transform: translateY(-4px);
+    z-index: 1000;
+    padding: 12px;
+    background: var(--docx-bg-primary);
+    position: absolute;
+    box-shadow: var(--docx-shadow-lg);
+    border: 1px solid var(--docx-border-color);
+    border-radius: var(--docx-radius-md);
+    width: 280px;
+    transition: opacity var(--docx-transition-normal), visibility var(--docx-transition-normal), transform var(--docx-transition-normal);
+    pointer-events: none;
+}
+.${c}-comment-popover::before {
+    content: '';
+    position: absolute;
+    top: -6px;
+    left: 16px;
+    width: 10px;
+    height: 10px;
+    background: var(--docx-bg-primary);
+    border-left: 1px solid var(--docx-border-color);
+    border-top: 1px solid var(--docx-border-color);
+    transform: rotate(45deg);
+}
+.${c}-comment-ref:hover ~ .${c}-comment-popover {
+    opacity: 1;
+    visibility: visible;
+    transform: translateY(0);
+    pointer-events: auto;
+}
+.${c}-comment-popover:hover {
+    opacity: 1;
+    visibility: visible;
+    transform: translateY(0);
+    pointer-events: auto;
+}
+.${c}-comment-author {
+    font-size: 13px;
+    font-weight: 500;
+    color: var(--docx-text-primary);
+    margin-bottom: 2px;
+}
+.${c}-comment-date {
+    font-size: 12px;
+    color: var(--docx-text-secondary);
+    margin-bottom: 8px;
+}
 `
-		};
+		}
+
+		if (this.options.renderChanges) {
+			// Track changes layout styles
+			styleText += `
+/* Track Changes Margin - page is expanded to fit annotations */
+section.${c}.${c}-has-track-changes {
+    position: relative;
+}
+.${c}-track-changes-margin {
+    position: absolute;
+    top: 0;
+    right: 0;
+    height: 100%;
+    background: transparent;
+    overflow-y: visible;
+    box-sizing: border-box;
+    padding-top: inherit;
+    padding-bottom: inherit;
+    border-left: 1px solid var(--docx-border-color);
+}
+.${c}-track-changes-margin .${c}-tc-annotation {
+    position: absolute;
+    left: 8px;
+    right: 8px;
+}
+
+/* Track Changes Content Markers (margin mode) */
+.${c}-tc-content { position: relative; }
+.${c}-tc-inserted { background: var(--docx-color-inserted-bg); }
+.${c}-tc-deleted { background: var(--docx-color-deleted-bg); text-decoration: line-through; }
+.${c}-tc-moveFrom { background: var(--docx-color-moved-bg); text-decoration: line-through; }
+.${c}-tc-moveTo { background: var(--docx-color-moved-bg); }
+.${c}-tc-formatChange { background: var(--docx-color-format-bg); }
+
+/* Highlight animation on click */
+.${c}-tc-highlight {
+    outline: 2px solid var(--docx-color-accent);
+    outline-offset: 2px;
+    animation: ${c}-pulse 0.6s ease-out;
+}
+@keyframes ${c}-pulse {
+    0% { outline-color: var(--docx-color-accent); box-shadow: 0 0 0 0 rgba(26, 115, 232, 0.4); }
+    50% { box-shadow: 0 0 0 6px rgba(26, 115, 232, 0); }
+    100% { outline-color: var(--docx-color-accent); box-shadow: 0 0 0 0 rgba(26, 115, 232, 0); }
+}
+
+/* Inline mode styles */
+.${c}-tc-inline-wrapper { position: relative; display: inline; }
+.${c}-tc-inline {
+    cursor: default;
+    transition: background-color var(--docx-transition-fast);
+}
+.${c}-tc-inline-inserted {
+    background: var(--docx-color-inserted-bg);
+    border-bottom: 2px solid var(--docx-color-inserted);
+}
+.${c}-tc-inline-inserted:hover { background: var(--docx-color-inserted-bg-hover); }
+.${c}-tc-inline-deleted {
+    background: var(--docx-color-deleted-bg);
+    text-decoration: line-through;
+    border-bottom: 2px solid var(--docx-color-deleted);
+}
+.${c}-tc-inline-deleted:hover { background: var(--docx-color-deleted-bg-hover); }
+.${c}-tc-inline-moveFrom {
+    background: var(--docx-color-moved-bg);
+    text-decoration: line-through;
+    border-bottom: 2px solid var(--docx-color-moved);
+}
+.${c}-tc-inline-moveFrom:hover { background: var(--docx-color-moved-bg-hover); }
+.${c}-tc-inline-moveTo {
+    background: var(--docx-color-moved-bg);
+    border-bottom: 2px solid var(--docx-color-moved);
+}
+.${c}-tc-inline-moveTo:hover { background: var(--docx-color-moved-bg-hover); }
+
+/* Inline Popover - Animated */
+.${c}-tc-popover,
+.${c}-tc-popover * {
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif !important;
+    font-style: normal !important;
+}
+.${c}-tc-popover {
+    opacity: 0;
+    visibility: hidden;
+    transform: translateY(-4px);
+    z-index: 1000;
+    padding: 12px;
+    background: var(--docx-bg-primary);
+    position: absolute;
+    box-shadow: var(--docx-shadow-lg);
+    border: 1px solid var(--docx-border-color);
+    border-radius: var(--docx-radius-md);
+    width: 240px;
+    font-size: 13px;
+    line-height: 1.4;
+    top: 100%;
+    left: 0;
+    margin-top: 8px;
+    transition: opacity var(--docx-transition-normal), visibility var(--docx-transition-normal), transform var(--docx-transition-normal);
+    pointer-events: none;
+}
+/* Arrow indicator */
+.${c}-tc-popover::before {
+    content: '';
+    position: absolute;
+    top: -6px;
+    left: 16px;
+    width: 10px;
+    height: 10px;
+    background: var(--docx-bg-primary);
+    border-left: 1px solid var(--docx-border-color);
+    border-top: 1px solid var(--docx-border-color);
+    transform: rotate(45deg);
+}
+.${c}-tc-inline:hover ~ .${c}-tc-popover,
+.${c}-tc-popover:hover {
+    opacity: 1;
+    visibility: visible;
+    transform: translateY(0);
+    pointer-events: auto;
+}
+
+.${c}-tc-popover-header {
+    display: flex;
+    align-items: baseline;
+    gap: 8px;
+    margin-bottom: 4px;
+}
+.${c}-tc-popover-author {
+    font-family: inherit;
+    font-size: 13px;
+    font-weight: 500;
+    color: var(--docx-text-primary);
+}
+.${c}-tc-popover-date {
+    font-family: inherit;
+    font-size: 12px;
+    font-weight: 400;
+    color: var(--docx-text-secondary);
+}
+.${c}-tc-popover-content {
+    font-family: inherit;
+    font-size: 13px;
+    font-weight: 400;
+    color: var(--docx-text-secondary);
+}
+.${c}-tc-popover-type {
+    font-family: inherit;
+    font-size: 11px;
+    font-weight: 500;
+    text-transform: uppercase;
+    letter-spacing: 0.3px;
+}
+.${c}-tc-popover-type-inserted { color: var(--docx-color-inserted) !important; }
+.${c}-tc-popover-type-deleted { color: var(--docx-color-deleted) !important; }
+.${c}-tc-popover-type-moveFrom, .${c}-tc-popover-type-moveTo { color: var(--docx-color-moved) !important; }
+.${c}-tc-popover-type-formatChange { color: var(--docx-color-format) !important; }
+
+/* Track Changes Annotation Cards - Enhanced with gradients */
+.${c}-tc-annotation,
+.${c}-tc-annotation * {
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif !important;
+    font-style: normal !important;
+}
+.${c}-tc-annotation {
+    background: var(--docx-bg-primary);
+    border: 1px solid var(--docx-border-color);
+    border-radius: var(--docx-radius-md);
+    padding: 12px;
+    font-size: 13px;
+    line-height: 1.4;
+    box-shadow: var(--docx-shadow-sm);
+    cursor: pointer;
+    transition: box-shadow var(--docx-transition-fast), transform var(--docx-transition-fast), border-color var(--docx-transition-fast);
+}
+.${c}-tc-annotation:hover {
+    box-shadow: var(--docx-shadow-hover);
+    transform: translateY(-1px);
+}
+.${c}-tc-annotation:focus-visible {
+    outline: 2px solid var(--docx-color-accent);
+    outline-offset: 2px;
+}
+.${c}-tc-annotation-active {
+    border-color: var(--docx-color-accent);
+    box-shadow: 0 1px 3px rgba(26,115,232,0.3);
+}
+
+/* Color accent strip + gradient background */
+.${c}-tc-annotation-inserted {
+    background: linear-gradient(135deg, var(--docx-color-inserted-bg) 0%, var(--docx-bg-primary) 50%);
+    border-left: 3px solid var(--docx-color-inserted);
+}
+.${c}-tc-annotation-deleted {
+    background: linear-gradient(135deg, var(--docx-color-deleted-bg) 0%, var(--docx-bg-primary) 50%);
+    border-left: 3px solid var(--docx-color-deleted);
+}
+.${c}-tc-annotation-moveFrom,
+.${c}-tc-annotation-moveTo {
+    background: linear-gradient(135deg, var(--docx-color-moved-bg) 0%, var(--docx-bg-primary) 50%);
+    border-left: 3px solid var(--docx-color-moved);
+}
+.${c}-tc-annotation-formatChange {
+    background: linear-gradient(135deg, var(--docx-color-format-bg) 0%, var(--docx-bg-primary) 50%);
+    border-left: 3px solid var(--docx-color-format);
+}
+.${c}-tc-annotation-comment {
+    background: linear-gradient(135deg, var(--docx-color-comment-bg) 0%, var(--docx-bg-primary) 50%);
+    border-left: 3px solid var(--docx-color-comment);
+}
+
+.${c}-comment-marker { border-bottom: 2px solid var(--docx-color-comment); }
+
+/* Header: author + date inline */
+.${c}-tc-annotation-header {
+    display: flex;
+    align-items: baseline;
+    gap: 8px;
+    margin-bottom: 4px;
+}
+.${c}-tc-annotation-author {
+    font-family: inherit;
+    font-size: 13px;
+    font-weight: 500;
+    color: var(--docx-text-primary);
+}
+.${c}-tc-annotation-date {
+    font-family: inherit;
+    font-size: 12px;
+    font-weight: 400;
+    color: var(--docx-text-secondary);
+}
+
+/* Content area */
+.${c}-tc-annotation-content {
+    font-family: inherit;
+    font-size: 13px;
+    font-weight: 400;
+    color: var(--docx-text-secondary);
+    line-height: 1.4;
+}
+.${c}-tc-annotation-type {
+    font-family: inherit;
+    font-size: 11px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.3px;
+}
+.${c}-tc-annotation-inserted .${c}-tc-annotation-type { color: var(--docx-color-inserted); }
+.${c}-tc-annotation-deleted .${c}-tc-annotation-type { color: var(--docx-color-deleted); }
+.${c}-tc-annotation-moveFrom .${c}-tc-annotation-type,
+.${c}-tc-annotation-moveTo .${c}-tc-annotation-type { color: var(--docx-color-moved); }
+.${c}-tc-annotation-formatChange .${c}-tc-annotation-type { color: var(--docx-color-format); }
+.${c}-tc-annotation-comment .${c}-tc-annotation-type { color: var(--docx-color-comment); }
+
+/* CSS Highlight API styles */
+::highlight(${c}-tc-inserted) { background: var(--docx-color-inserted-bg); }
+::highlight(${c}-tc-deleted) { background: var(--docx-color-deleted-bg); text-decoration: line-through; }
+::highlight(${c}-tc-move-from) { background: var(--docx-color-moved-bg); text-decoration: line-through; }
+::highlight(${c}-tc-move-to) { background: var(--docx-color-moved-bg); }
+::highlight(${c}-tc-format) { background: var(--docx-color-format-bg); }
+
+/* Floating Panel Mode - positioned like margin mode but persistent across pages */
+.${c}-wrapper.${c}-has-floating-panel {
+    position: relative;
+}
+.${c}-wrapper.${c}-has-floating-panel > section.${c}:first-of-type {
+    position: relative;
+}
+.${c}-track-changes-floating {
+    position: absolute;
+    top: 0;
+    left: 100%;
+    height: 100%;
+    background: transparent;
+    padding-left: 16px;
+    box-sizing: border-box;
+}
+.${c}-track-changes-floating .${c}-tc-annotation {
+    position: absolute;
+    left: 0;
+    right: 0;
+}
+
+/* Accessibility: Focus styles for keyboard navigation */
+.${c}-tc-inline:focus-visible {
+    outline: 2px solid var(--docx-color-accent);
+    outline-offset: 1px;
+    border-radius: 2px;
+}
+.${c}-tc-annotation[tabindex]:focus-visible {
+    outline: 2px solid var(--docx-color-accent);
+    outline-offset: 2px;
+}
+`;
+		}
 
 		return this.createStyleElement(styleText);
 	}
@@ -862,10 +1486,22 @@ section.${c}>footer { z-index: 1; }
 				return this.renderMllList(elem);
 
 			case DomType.Inserted:
-				return this.renderInserted(elem);
+				return this.renderInserted(elem as WmlTrackChange);
 
 			case DomType.Deleted:
-				return this.renderDeleted(elem);
+				return this.renderDeleted(elem as WmlTrackChange);
+
+			case DomType.MoveFrom:
+				return this.renderMoveFrom(elem as WmlTrackChange);
+
+			case DomType.MoveTo:
+				return this.renderMoveTo(elem as WmlTrackChange);
+
+			case DomType.MoveFromRangeStart:
+			case DomType.MoveFromRangeEnd:
+			case DomType.MoveToRangeStart:
+			case DomType.MoveToRangeEnd:
+				return null; // Range markers are not rendered directly
 
 			case DomType.CommentRangeStart:
 				return this.renderCommentRangeStart(elem);
@@ -918,7 +1554,42 @@ section.${c}>footer { z-index: 1; }
 			result.classList.add(this.numberingClass(numbering.id, numbering.level));
 		}
 
+		// Handle paragraph formatting changes
+		if (elem.formatChange && this.options.renderChanges) {
+			this.registerFormatChange(elem.formatChange, result);
+		}
+
 		return result;
+	}
+
+	registerFormatChange(formatChange: WmlTrackChange, element: HTMLElement): void {
+		if (this.options.trackChangesMode !== 'margin' && this.options.trackChangesMode !== 'floating') return;
+
+		element.classList.add(`${this.className}-tc-content`, `${this.className}-tc-formatChange`);
+		element.dataset.tcId = formatChange.id;
+
+		const annotation: TrackChangeAnnotation = {
+			id: formatChange.id,
+			author: formatChange.author || 'Unknown',
+			date: formatChange.date || '',
+			changeType: 'formatChange',
+			previewText: '',
+			formatDescription: formatChange.formatDescription || 'Formatting changed',
+			contentElement: element
+		};
+
+		this.trackChangeMap[formatChange.id] = {
+			annotation,
+			contentElements: [element]
+		};
+
+		if (this.trackChangeHighlights) {
+			this.later(() => {
+				const rng = new Range();
+				rng.selectNodeContents(element);
+				this.trackChangeHighlights.formatChange.add(rng);
+			});
+		}
 	}
 
 	renderRunProperties(style: any, props: RunProperties) {
@@ -997,8 +1668,16 @@ section.${c}>footer { z-index: 1; }
 		if (!comment)
 			return null;
 
+		// Margin or floating mode - render comment in the sidebar/panel
+		if (this.options.trackChangesMode === 'margin' || this.options.trackChangesMode === 'floating') {
+			return this.renderCommentWithMargin(comment);
+		}
+
+		// Inline mode - render as popover
 		const frg = new DocumentFragment();
-		const commentRefEl = this.createElement("span", { className: `${this.className}-comment-ref` }, ['💬']);
+		const commentRefEl = this.createElement("span", { className: `${this.className}-comment-ref` });
+		// Lucide message-square icon as inline SVG
+		commentRefEl.innerHTML = `<svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"></path></svg>`;
 		const commentsContainerEl = this.createElement("div", { className: `${this.className}-comment-popover` });
 
 		this.renderCommentContent(comment, commentsContainerEl);
@@ -1008,6 +1687,39 @@ section.${c}>footer { z-index: 1; }
 		frg.appendChild(commentsContainerEl);
 
 		return frg;
+	}
+
+	renderCommentWithMargin(comment: WmlComment): Node {
+		// Create a marker span for the comment location
+		const marker = this.createElement("span", {
+			className: `${this.className}-comment-marker`
+		});
+		marker.dataset.commentId = comment.id;
+
+		// Extract comment text for preview
+		let commentText = '';
+		const extractText = (el: any) => {
+			if (el.text) commentText += el.text;
+			if (el.children) el.children.forEach(extractText);
+		};
+		comment.children?.forEach(extractText);
+
+		// Register for margin annotation
+		const annotation: TrackChangeAnnotation = {
+			id: `comment-${comment.id}`,
+			author: comment.author || 'Unknown',
+			date: comment.date || '',
+			changeType: 'comment',
+			previewText: commentText.substring(0, 100) || '(no text)',
+			contentElement: marker
+		};
+
+		this.trackChangeMap[`comment-${comment.id}`] = {
+			annotation,
+			contentElements: [marker]
+		};
+
+		return marker;
 	}
 
 	renderAltChunk(elem: WmlAltChunk) {
@@ -1084,18 +1796,331 @@ section.${c}>footer { z-index: 1; }
 		return null;
 	}
 
-	renderInserted(elem: OpenXmlElement): Node | Node[] {
-		if (this.options.renderChanges)
-			return this.renderContainer(elem, "ins");
+	renderInserted(elem: WmlTrackChange): Node | Node[] {
+		if (!this.options.renderChanges) {
+			return this.renderElements(elem.children);
+		}
 
-		return this.renderElements(elem.children);
+		if (this.options.trackChangesMode === 'margin' || this.options.trackChangesMode === 'floating') {
+			return this.renderTrackChangeWithMargin(elem, 'inserted');
+		}
+
+		return this.renderTrackChangeInline(elem, 'inserted');
 	}
 
-	renderDeleted(elem: OpenXmlElement): Node {
-		if (this.options.renderChanges)
-			return this.renderContainer(elem, "del");
+	renderDeleted(elem: WmlTrackChange): Node | Node[] {
+		if (!this.options.renderChanges) {
+			return null;
+		}
 
-		return null;
+		if (this.options.trackChangesMode === 'margin' || this.options.trackChangesMode === 'floating') {
+			return this.renderTrackChangeWithMargin(elem, 'deleted');
+		}
+
+		return this.renderTrackChangeInline(elem, 'deleted');
+	}
+
+	renderMoveFrom(elem: WmlTrackChange): Node | Node[] {
+		if (!this.options.renderChanges) {
+			return null;
+		}
+
+		if (this.options.trackChangesMode === 'margin' || this.options.trackChangesMode === 'floating') {
+			return this.renderTrackChangeWithMargin(elem, 'moveFrom');
+		}
+
+		return this.renderTrackChangeInline(elem, 'moveFrom');
+	}
+
+	renderMoveTo(elem: WmlTrackChange): Node | Node[] {
+		if (!this.options.renderChanges) {
+			return this.renderElements(elem.children);
+		}
+
+		if (this.options.trackChangesMode === 'margin' || this.options.trackChangesMode === 'floating') {
+			return this.renderTrackChangeWithMargin(elem, 'moveTo');
+		}
+
+		return this.renderTrackChangeInline(elem, 'moveTo');
+	}
+
+	renderTrackChangeInline(elem: WmlTrackChange, changeType: TrackChangeType): Node {
+		const typeLabels: Record<string, string> = {
+			'inserted': 'Inserted',
+			'deleted': 'Deleted',
+			'moveFrom': 'Moved from',
+			'moveTo': 'Moved to'
+		};
+
+		// Create wrapper with position relative for popover
+		const wrapper = this.createElement("span", {
+			className: `${this.className}-tc-inline-wrapper`
+		});
+
+		// Render the content with styling
+		const contentWrapper = this.createElement("span", {
+			className: `${this.className}-tc-inline ${this.className}-tc-inline-${changeType}`
+		});
+		this.renderElements(elem.children, contentWrapper);
+		wrapper.appendChild(contentWrapper);
+
+		// Create popover (shows on hover over content)
+		const popover = this.createElement("div", {
+			className: `${this.className}-tc-popover`
+		});
+
+		// Header: author + date inline
+		const header = this.createElement('div', {
+			className: `${this.className}-tc-popover-header`
+		});
+
+		header.appendChild(this.createElement('span', {
+			className: `${this.className}-tc-popover-author`
+		}, [elem.author || 'Unknown']));
+
+		if (elem.date) {
+			try {
+				const d = new Date(elem.date);
+				header.appendChild(this.createElement('span', {
+					className: `${this.className}-tc-popover-date`
+				}, [d.toLocaleDateString(undefined, { month: 'short', day: 'numeric' })]));
+			} catch {
+				header.appendChild(this.createElement('span', {
+					className: `${this.className}-tc-popover-date`
+				}, [elem.date]));
+			}
+		}
+
+		popover.appendChild(header);
+
+		// Content: type + preview
+		const content = this.createElement('div', {
+			className: `${this.className}-tc-popover-content`
+		});
+
+		const typeSpan = this.createElement('span', {
+			className: `${this.className}-tc-popover-type ${this.className}-tc-popover-type-${changeType}`
+		}, [typeLabels[changeType] + ': ']);
+		content.appendChild(typeSpan);
+
+		const previewText = this.extractPreviewText(elem);
+		content.appendChild(this.htmlDocument.createTextNode(previewText));
+
+		popover.appendChild(content);
+		wrapper.appendChild(popover);
+
+		return wrapper;
+	}
+
+	renderTrackChangeWithMargin(elem: WmlTrackChange, changeType: TrackChangeType): Node[] {
+		const children = this.renderElements(elem.children);
+		if (!children || children.length === 0) return children;
+
+		// Create wrapper span for the content
+		const wrapper = this.createElement("span", {
+			className: `${this.className}-tc-content ${this.className}-tc-${changeType}`
+		});
+		wrapper.dataset.tcId = elem.id;
+
+		appendChildren(wrapper, children);
+
+		// Extract preview text for the annotation
+		const previewText = this.extractPreviewText(elem);
+
+		// Register for margin annotation
+		const annotation: TrackChangeAnnotation = {
+			id: elem.id,
+			author: elem.author || 'Unknown',
+			date: elem.date || '',
+			changeType: changeType,
+			previewText: previewText,
+			formatDescription: elem.formatDescription,
+			contentElement: wrapper
+		};
+
+		this.trackChangeMap[elem.id] = {
+			annotation,
+			contentElements: [wrapper]
+		};
+
+		// Add to CSS Highlight API if available
+		if (this.trackChangeHighlights) {
+			this.later(() => {
+				const rng = new Range();
+				rng.selectNodeContents(wrapper);
+
+				switch (changeType) {
+					case 'inserted':
+						this.trackChangeHighlights.inserted.add(rng);
+						break;
+					case 'deleted':
+						this.trackChangeHighlights.deleted.add(rng);
+						break;
+					case 'moveFrom':
+						this.trackChangeHighlights.moveFrom.add(rng);
+						break;
+					case 'moveTo':
+						this.trackChangeHighlights.moveTo.add(rng);
+						break;
+					case 'formatChange':
+						this.trackChangeHighlights.formatChange.add(rng);
+						break;
+				}
+			});
+		}
+
+		return [wrapper];
+	}
+
+	extractPreviewText(elem: OpenXmlElement, maxLength: number = 50): string {
+		let text = '';
+
+		const extractFromElement = (el: OpenXmlElement) => {
+			if (text.length >= maxLength) return;
+
+			if (el.type === DomType.Text || el.type === DomType.DeletedText) {
+				text += (el as WmlText).text;
+			} else if (el.children) {
+				for (const child of el.children) {
+					extractFromElement(child);
+					if (text.length >= maxLength) break;
+				}
+			}
+		};
+
+		extractFromElement(elem);
+
+		if (text.length > maxLength) {
+			text = text.substring(0, maxLength) + '...';
+		}
+
+		return text || '(empty)';
+	}
+
+	renderMarginAnnotationsFromMap(marginContainer: HTMLElement, contentWrapper: HTMLElement, trackChangeMap: Record<string, TrackChangeEntry>): void {
+		const annotations = Object.values(trackChangeMap)
+			.map(entry => entry.annotation)
+			.filter(a => a.contentElement);
+
+		if (annotations.length === 0) return;
+
+		// Sort by vertical position of content
+		const sortedAnnotations = annotations.sort((a, b) => {
+			const rectA = a.contentElement.getBoundingClientRect();
+			const rectB = b.contentElement.getBoundingClientRect();
+			return rectA.top - rectB.top;
+		});
+
+		const containerRect = marginContainer.getBoundingClientRect();
+		const contentRect = contentWrapper.getBoundingClientRect();
+		const GAP = 8;
+		let lastBottom = 0;
+
+		for (const annotation of sortedAnnotations) {
+			const contentRect = annotation.contentElement.getBoundingClientRect();
+			const targetTop = contentRect.top - containerRect.top;
+
+			// Create annotation element
+			const annotEl = this.createAnnotationElement(annotation);
+			marginContainer.appendChild(annotEl);
+
+			// Calculate position (avoid overlaps)
+			const actualTop = Math.max(targetTop, lastBottom);
+			annotEl.style.top = `${actualTop}px`;
+
+			lastBottom = actualTop + annotEl.offsetHeight + GAP;
+			annotation.element = annotEl;
+
+			// Add click handler to highlight content
+			const handleActivate = () => {
+				annotation.contentElement?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+				annotation.contentElement?.classList.add(`${this.className}-tc-highlight`);
+				setTimeout(() => {
+					annotation.contentElement?.classList.remove(`${this.className}-tc-highlight`);
+				}, 2000);
+			};
+			annotEl.addEventListener('click', handleActivate);
+			// Keyboard accessibility: Enter/Space to activate
+			annotEl.addEventListener('keydown', (e: KeyboardEvent) => {
+				if (e.key === 'Enter' || e.key === ' ') {
+					e.preventDefault();
+					handleActivate();
+				}
+			});
+		}
+	}
+
+	createAnnotationElement(annotation: TrackChangeAnnotation): HTMLElement {
+		const typeLabels: Record<TrackChangeType, string> = {
+			'inserted': 'Inserted',
+			'deleted': 'Deleted',
+			'moveFrom': 'Moved from',
+			'moveTo': 'Moved to',
+			'formatChange': 'Formatted',
+			'comment': 'Comment'
+		};
+
+		const el = this.createElement("div", {
+			className: `${this.className}-tc-annotation ${this.className}-tc-annotation-${annotation.changeType}`
+		});
+
+		// Accessibility: make annotation focusable and interactive
+		el.setAttribute('role', 'button');
+		el.setAttribute('tabindex', '0');
+		el.setAttribute('aria-label', `${typeLabels[annotation.changeType]} by ${annotation.author}: ${annotation.previewText}`);
+
+		// Author and date header (inline)
+		const header = this.createElement("div", {
+			className: `${this.className}-tc-annotation-header`
+		});
+
+		const author = this.createElement("span", {
+			className: `${this.className}-tc-annotation-author`
+		});
+		author.textContent = annotation.author;
+		header.appendChild(author);
+
+		if (annotation.date) {
+			const date = this.createElement("span", {
+				className: `${this.className}-tc-annotation-date`
+			});
+			try {
+				const d = new Date(annotation.date);
+				date.textContent = d.toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
+			} catch {
+				date.textContent = annotation.date;
+			}
+			header.appendChild(date);
+		}
+
+		el.appendChild(header);
+
+		// Content: change type + preview
+		const content = this.createElement("div", {
+			className: `${this.className}-tc-annotation-content`
+		});
+
+		if (annotation.changeType === 'comment') {
+			content.textContent = annotation.previewText;
+		} else if (annotation.changeType === 'formatChange' && annotation.formatDescription) {
+			const typeSpan = this.createElement("span", {
+				className: `${this.className}-tc-annotation-type`
+			});
+			typeSpan.textContent = typeLabels[annotation.changeType] + ': ';
+			content.appendChild(typeSpan);
+			content.appendChild(this.htmlDocument.createTextNode(annotation.formatDescription));
+		} else {
+			const typeSpan = this.createElement("span", {
+				className: `${this.className}-tc-annotation-type`
+			});
+			typeSpan.textContent = typeLabels[annotation.changeType] + ': ';
+			content.appendChild(typeSpan);
+			content.appendChild(this.htmlDocument.createTextNode(annotation.previewText));
+		}
+
+		el.appendChild(content);
+
+		return el;
 	}
 
 	renderSymbol(elem: WmlSymbol) {
@@ -1156,6 +2181,11 @@ section.${c}>footer { z-index: 1; }
 		}
 		else {
 			this.renderElements(elem.children, result);
+		}
+
+		// Handle run formatting changes
+		if (elem.formatChange && this.options.renderChanges) {
+			this.registerFormatChange(elem.formatChange, result);
 		}
 
 		return result;
