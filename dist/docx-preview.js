@@ -3366,8 +3366,10 @@
             let prev;
             const result = [current];
             for (let s of sections) {
+                if (this.isPageBreakSection(prev, s.sectProps))
+                    result.push(current = []);
                 current.push(s);
-                if ((this.options.breakPages && s.pageBreak) || this.isPageBreakSection(prev, s.sectProps))
+                if (this.options.breakPages && s.pageBreak)
                     result.push(current = []);
                 prev = s.sectProps;
             }

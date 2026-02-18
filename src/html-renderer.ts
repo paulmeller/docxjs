@@ -602,12 +602,14 @@ export class HtmlRenderer {
 		const result: Section[][] = [current];
 
 		for (let s of sections) {
+			// Start new page BEFORE this section if page size/orientation changed
+			if (this.isPageBreakSection(prev, s.sectProps))
+				result.push(current = []);
+
 			current.push(s);
 
-			// Create new page if:
-			// 1. breakPages is enabled AND there's a page break marker, OR
-			// 2. Section properties change (orientation/size)
-			if ((this.options.breakPages && s.pageBreak) || this.isPageBreakSection(prev, s.sectProps))
+			// Start new page AFTER this section if it contains a page break marker
+			if (this.options.breakPages && s.pageBreak)
 				result.push(current = []);
 
 			prev = s.sectProps;
