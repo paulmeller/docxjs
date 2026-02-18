@@ -3631,6 +3631,9 @@ section.${c}.${c}-has-track-changes {
     position: absolute;
     left: 8px;
     right: 8px;
+    border: 1px solid var(--docx-border-light);
+    border-radius: var(--docx-radius-md);
+    box-shadow: var(--docx-shadow-sm);
 }
 
 /* Track Changes Content Markers (margin mode) */
@@ -3765,7 +3768,7 @@ section.${c}.${c}-has-track-changes {
 .${c}-tc-popover-type-moveFrom, .${c}-tc-popover-type-moveTo { color: var(--docx-color-moved) !important; }
 .${c}-tc-popover-type-formatChange { color: var(--docx-color-format) !important; }
 
-/* Track Changes Annotation Cards - Enhanced with gradients */
+/* Track Changes Annotation Cards */
 .${c}-tc-annotation,
 .${c}-tc-annotation * {
     font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif !important;
@@ -3773,52 +3776,71 @@ section.${c}.${c}-has-track-changes {
 }
 .${c}-tc-annotation {
     background: var(--docx-bg-primary);
-    border: 1px solid var(--docx-border-color);
-    border-radius: var(--docx-radius-md);
-    padding: 12px;
+    border-bottom: 1px solid var(--docx-border-light);
+    padding: 14px 16px;
     font-size: 13px;
-    line-height: 1.4;
-    box-shadow: var(--docx-shadow-sm);
+    line-height: 1.5;
     cursor: pointer;
-    transition: box-shadow var(--docx-transition-fast), transform var(--docx-transition-fast), border-color var(--docx-transition-fast);
+    transition: background-color var(--docx-transition-fast);
+}
+.${c}-tc-annotation:first-child {
+    border-top-left-radius: var(--docx-radius-md);
+    border-top-right-radius: var(--docx-radius-md);
+}
+.${c}-tc-annotation:last-child {
+    border-bottom: none;
+    border-bottom-left-radius: var(--docx-radius-md);
+    border-bottom-right-radius: var(--docx-radius-md);
 }
 .${c}-tc-annotation:hover {
-    box-shadow: var(--docx-shadow-hover);
-    transform: translateY(-1px);
+    background: var(--docx-bg-secondary);
 }
 .${c}-tc-annotation:focus-visible {
     outline: 2px solid var(--docx-color-accent);
-    outline-offset: 2px;
+    outline-offset: -2px;
 }
 .${c}-tc-annotation-active {
-    border-color: var(--docx-color-accent);
-    box-shadow: 0 1px 3px rgba(26,115,232,0.3);
-}
-
-/* Color accent strip + gradient background */
-.${c}-tc-annotation-inserted {
-    background: linear-gradient(135deg, var(--docx-color-inserted-bg) 0%, var(--docx-bg-primary) 50%);
-    border-left: 3px solid var(--docx-color-inserted);
-}
-.${c}-tc-annotation-deleted {
-    background: linear-gradient(135deg, var(--docx-color-deleted-bg) 0%, var(--docx-bg-primary) 50%);
-    border-left: 3px solid var(--docx-color-deleted);
-}
-.${c}-tc-annotation-moveFrom,
-.${c}-tc-annotation-moveTo {
-    background: linear-gradient(135deg, var(--docx-color-moved-bg) 0%, var(--docx-bg-primary) 50%);
-    border-left: 3px solid var(--docx-color-moved);
-}
-.${c}-tc-annotation-formatChange {
-    background: linear-gradient(135deg, var(--docx-color-format-bg) 0%, var(--docx-bg-primary) 50%);
-    border-left: 3px solid var(--docx-color-format);
-}
-.${c}-tc-annotation-comment {
-    background: linear-gradient(135deg, var(--docx-color-comment-bg) 0%, var(--docx-bg-primary) 50%);
-    border-left: 3px solid var(--docx-color-comment);
+    background: var(--docx-bg-secondary);
 }
 
 .${c}-comment-marker { border-bottom: 2px solid var(--docx-color-comment); }
+
+/* Annotation card layout: avatar + body */
+.${c}-tc-annotation-row {
+    display: flex;
+    gap: 12px;
+    align-items: flex-start;
+}
+
+/* Avatar circle */
+.${c}-tc-annotation-avatar {
+    width: 32px;
+    height: 32px;
+    min-width: 32px;
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 12px;
+    font-weight: 600;
+    color: #fff;
+    background: var(--docx-text-muted);
+    text-transform: uppercase;
+    line-height: 1;
+    user-select: none;
+}
+.${c}-tc-annotation-inserted .${c}-tc-annotation-avatar { background: var(--docx-color-inserted); }
+.${c}-tc-annotation-deleted .${c}-tc-annotation-avatar { background: var(--docx-color-deleted); }
+.${c}-tc-annotation-moveFrom .${c}-tc-annotation-avatar,
+.${c}-tc-annotation-moveTo .${c}-tc-annotation-avatar { background: var(--docx-color-moved); }
+.${c}-tc-annotation-formatChange .${c}-tc-annotation-avatar { background: var(--docx-color-format); }
+.${c}-tc-annotation-comment .${c}-tc-annotation-avatar { background: var(--docx-color-comment); }
+
+/* Body: header + content */
+.${c}-tc-annotation-body {
+    flex: 1;
+    min-width: 0;
+}
 
 /* Header: author + date inline */
 .${c}-tc-annotation-header {
@@ -3830,14 +3852,16 @@ section.${c}.${c}-has-track-changes {
 .${c}-tc-annotation-author {
     font-family: inherit;
     font-size: 13px;
-    font-weight: 500;
+    font-weight: 600;
     color: var(--docx-text-primary);
 }
 .${c}-tc-annotation-date {
     font-family: inherit;
     font-size: 12px;
     font-weight: 400;
-    color: var(--docx-text-secondary);
+    color: var(--docx-text-muted);
+    margin-left: auto;
+    white-space: nowrap;
 }
 
 /* Content area */
@@ -3846,7 +3870,7 @@ section.${c}.${c}-has-track-changes {
     font-size: 13px;
     font-weight: 400;
     color: var(--docx-text-secondary);
-    line-height: 1.4;
+    line-height: 1.5;
 }
 .${c}-tc-annotation-type {
     font-family: inherit;
@@ -3889,6 +3913,9 @@ section.${c}.${c}-has-track-changes {
     position: absolute;
     left: 0;
     right: 0;
+    border: 1px solid var(--docx-border-light);
+    border-radius: var(--docx-radius-md);
+    box-shadow: var(--docx-shadow-sm);
 }
 
 /* Accessibility: Focus styles for keyboard navigation */
@@ -4524,28 +4551,43 @@ section.${c}.${c}-has-track-changes {
             el.setAttribute('role', 'button');
             el.setAttribute('tabindex', '0');
             el.setAttribute('aria-label', `${typeLabels[annotation.changeType]} by ${annotation.author}: ${annotation.previewText}`);
+            const row = this.createElement("div", {
+                className: `${this.className}-tc-annotation-row`
+            });
+            const avatar = this.createElement("div", {
+                className: `${this.className}-tc-annotation-avatar`
+            });
+            const authorName = annotation.author || '';
+            const nameParts = authorName.trim().split(/\s+/);
+            const initials = nameParts.length >= 2
+                ? (nameParts[0][0] + nameParts[nameParts.length - 1][0]).toUpperCase()
+                : authorName.substring(0, 2).toUpperCase();
+            avatar.textContent = initials;
+            row.appendChild(avatar);
+            const body = this.createElement("div", {
+                className: `${this.className}-tc-annotation-body`
+            });
             const header = this.createElement("div", {
                 className: `${this.className}-tc-annotation-header`
             });
-            const author = this.createElement("span", {
+            const authorEl = this.createElement("span", {
                 className: `${this.className}-tc-annotation-author`
             });
-            author.textContent = annotation.author;
-            header.appendChild(author);
+            authorEl.textContent = annotation.author;
+            header.appendChild(authorEl);
             if (annotation.date) {
-                const date = this.createElement("span", {
+                const dateEl = this.createElement("span", {
                     className: `${this.className}-tc-annotation-date`
                 });
                 try {
-                    const d = new Date(annotation.date);
-                    date.textContent = d.toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
+                    dateEl.textContent = this.formatRelativeDate(new Date(annotation.date));
                 }
                 catch {
-                    date.textContent = annotation.date;
+                    dateEl.textContent = annotation.date;
                 }
-                header.appendChild(date);
+                header.appendChild(dateEl);
             }
-            el.appendChild(header);
+            body.appendChild(header);
             const content = this.createElement("div", {
                 className: `${this.className}-tc-annotation-content`
             });
@@ -4568,8 +4610,27 @@ section.${c}.${c}-has-track-changes {
                 content.appendChild(typeSpan);
                 content.appendChild(this.htmlDocument.createTextNode(annotation.previewText));
             }
-            el.appendChild(content);
+            body.appendChild(content);
+            row.appendChild(body);
+            el.appendChild(row);
             return el;
+        }
+        formatRelativeDate(date) {
+            const now = new Date();
+            const diffMs = now.getTime() - date.getTime();
+            const diffSec = Math.floor(diffMs / 1000);
+            const diffMin = Math.floor(diffSec / 60);
+            const diffHr = Math.floor(diffMin / 60);
+            const diffDay = Math.floor(diffHr / 24);
+            if (diffSec < 60)
+                return 'just now';
+            if (diffMin < 60)
+                return `${diffMin}m ago`;
+            if (diffHr < 24)
+                return `${diffHr}h ago`;
+            if (diffDay < 7)
+                return `${diffDay}d ago`;
+            return date.toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
         }
         renderSymbol(elem) {
             var span = this.createElement("span");
