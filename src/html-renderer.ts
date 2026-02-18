@@ -123,7 +123,9 @@ export class HtmlRenderer {
 			this.commentHighlight = new Highlight();
 		}
 
-		if (this.options.renderChanges && (this.options.trackChangesMode === 'margin' || this.options.trackChangesMode === 'floating') && globalThis.Highlight) {
+		const needsTrackChangeHighlights = (this.options.renderChanges && (this.options.trackChangesMode === 'margin' || this.options.trackChangesMode === 'floating'))
+			|| (this.options.renderComments && (this.options.commentsMode === 'margin' || this.options.commentsMode === 'floating'));
+		if (needsTrackChangeHighlights && globalThis.Highlight) {
 			this.trackChangeHighlights = {
 				inserted: new Highlight(),
 				deleted: new Highlight(),
@@ -198,7 +200,10 @@ export class HtmlRenderer {
 			(CSS as any).highlights.set(`${this.className}-comments`, this.commentHighlight);
 		}
 
-		if (this.trackChangeHighlights && options.renderChanges && (options.trackChangesMode === 'margin' || options.trackChangesMode === 'floating')) {
+		if (this.trackChangeHighlights && (
+			(options.renderChanges && (options.trackChangesMode === 'margin' || options.trackChangesMode === 'floating'))
+			|| (options.renderComments && (options.commentsMode === 'margin' || options.commentsMode === 'floating'))
+		)) {
 			(CSS as any).highlights.set(`${this.className}-tc-inserted`, this.trackChangeHighlights.inserted);
 			(CSS as any).highlights.set(`${this.className}-tc-deleted`, this.trackChangeHighlights.deleted);
 			(CSS as any).highlights.set(`${this.className}-tc-move-from`, this.trackChangeHighlights.moveFrom);
@@ -366,8 +371,10 @@ export class HtmlRenderer {
 			if (props.pageSize) {
 				if (!this.options.ignoreWidth) {
 					let width = props.pageSize.width;
-					// Expand page width for margin mode track changes
-					if (this.options.renderChanges && this.options.trackChangesMode === 'margin') {
+					// Expand page width for margin mode track changes or comments
+					const needsMarginWidth = (this.options.renderChanges && this.options.trackChangesMode === 'margin')
+						|| (this.options.renderComments && this.options.commentsMode === 'margin');
+					if (needsMarginWidth) {
 						const marginWidth = parseFloat(this.options.trackChangesMarginWidth) || 220;
 						const pageWidth = parseFloat(width) || 0;
 						const unit = width.replace(/[\d.]/g, '') || 'px';
@@ -400,8 +407,10 @@ export class HtmlRenderer {
 
 	renderSections(document: DocumentElement): HTMLElement[] {
 		const result = [];
-		const isMarginMode = this.options.renderChanges && this.options.trackChangesMode === 'margin';
-		const isFloatingMode = this.options.renderChanges && this.options.trackChangesMode === 'floating';
+		const isMarginMode = (this.options.renderChanges && this.options.trackChangesMode === 'margin')
+			|| (this.options.renderComments && this.options.commentsMode === 'margin');
+		const isFloatingMode = (this.options.renderChanges && this.options.trackChangesMode === 'floating')
+			|| (this.options.renderComments && this.options.commentsMode === 'floating');
 
 		this.processElement(document);
 		const sections = this.splitBySection(document.children, document.props);
@@ -619,7 +628,8 @@ export class HtmlRenderer {
 	}
 
 	renderWrapper(children: HTMLElement[]) {
-		const isFloatingMode = this.options.renderChanges && this.options.trackChangesMode === 'floating';
+		const isFloatingMode = (this.options.renderChanges && this.options.trackChangesMode === 'floating')
+			|| (this.options.renderComments && this.options.commentsMode === 'floating');
 
 		const wrapper = this.createElement("div", { className: `${this.className}-wrapper` }, children);
 
@@ -1671,7 +1681,7 @@ section.${c}.${c}-has-track-changes {
 			return null;
 
 		// Margin or floating mode - render comment in the sidebar/panel
-		if (this.options.trackChangesMode === 'margin' || this.options.trackChangesMode === 'floating') {
+		if (this.options.commentsMode === 'margin' || this.options.commentsMode === 'floating') {
 			return this.renderCommentWithMargin(comment);
 		}
 

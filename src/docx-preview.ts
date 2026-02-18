@@ -26,6 +26,7 @@ export interface Options {
     renderAltChunks: boolean;
     trackChangesMode: TrackChangesMode;
     trackChangesMarginWidth: string;
+    commentsMode: TrackChangesMode;
 }
 
 export const defaultOptions: Options = {
@@ -49,7 +50,8 @@ export const defaultOptions: Options = {
     renderComments: false,
     renderAltChunks: true,
     trackChangesMode: 'inline',
-    trackChangesMarginWidth: '220px'
+    trackChangesMarginWidth: '220px',
+    commentsMode: 'inline'
 }
 
 export function parseAsync(data: Blob | any, userOptions?: Partial<Options>): Promise<any>  {

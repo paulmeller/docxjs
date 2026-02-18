@@ -2991,7 +2991,9 @@
             if (this.options.renderComments && globalThis.Highlight) {
                 this.commentHighlight = new Highlight();
             }
-            if (this.options.renderChanges && (this.options.trackChangesMode === 'margin' || this.options.trackChangesMode === 'floating') && globalThis.Highlight) {
+            const needsTrackChangeHighlights = (this.options.renderChanges && (this.options.trackChangesMode === 'margin' || this.options.trackChangesMode === 'floating'))
+                || (this.options.renderComments && (this.options.commentsMode === 'margin' || this.options.commentsMode === 'floating'));
+            if (needsTrackChangeHighlights && globalThis.Highlight) {
                 this.trackChangeHighlights = {
                     inserted: new Highlight(),
                     deleted: new Highlight(),
@@ -3046,7 +3048,8 @@
             if (this.commentHighlight && options.renderComments) {
                 CSS.highlights.set(`${this.className}-comments`, this.commentHighlight);
             }
-            if (this.trackChangeHighlights && options.renderChanges && (options.trackChangesMode === 'margin' || options.trackChangesMode === 'floating')) {
+            if (this.trackChangeHighlights && ((options.renderChanges && (options.trackChangesMode === 'margin' || options.trackChangesMode === 'floating'))
+                || (options.renderComments && (options.commentsMode === 'margin' || options.commentsMode === 'floating')))) {
                 CSS.highlights.set(`${this.className}-tc-inserted`, this.trackChangeHighlights.inserted);
                 CSS.highlights.set(`${this.className}-tc-deleted`, this.trackChangeHighlights.deleted);
                 CSS.highlights.set(`${this.className}-tc-move-from`, this.trackChangeHighlights.moveFrom);
@@ -3183,7 +3186,9 @@
                 if (props.pageSize) {
                     if (!this.options.ignoreWidth) {
                         let width = props.pageSize.width;
-                        if (this.options.renderChanges && this.options.trackChangesMode === 'margin') {
+                        const needsMarginWidth = (this.options.renderChanges && this.options.trackChangesMode === 'margin')
+                            || (this.options.renderComments && this.options.commentsMode === 'margin');
+                        if (needsMarginWidth) {
                             const marginWidth = parseFloat(this.options.trackChangesMarginWidth) || 220;
                             const pageWidth = parseFloat(width) || 0;
                             const unit = width.replace(/[\d.]/g, '') || 'px';
@@ -3210,8 +3215,10 @@
         }
         renderSections(document) {
             const result = [];
-            const isMarginMode = this.options.renderChanges && this.options.trackChangesMode === 'margin';
-            const isFloatingMode = this.options.renderChanges && this.options.trackChangesMode === 'floating';
+            const isMarginMode = (this.options.renderChanges && this.options.trackChangesMode === 'margin')
+                || (this.options.renderComments && this.options.commentsMode === 'margin');
+            const isFloatingMode = (this.options.renderChanges && this.options.trackChangesMode === 'floating')
+                || (this.options.renderComments && this.options.commentsMode === 'floating');
             this.processElement(document);
             const sections = this.splitBySection(document.children, document.props);
             const pages = this.groupByPageBreaks(sections);
@@ -3376,7 +3383,8 @@
             return result.filter(x => x.length > 0);
         }
         renderWrapper(children) {
-            const isFloatingMode = this.options.renderChanges && this.options.trackChangesMode === 'floating';
+            const isFloatingMode = (this.options.renderChanges && this.options.trackChangesMode === 'floating')
+                || (this.options.renderComments && this.options.commentsMode === 'floating');
             const wrapper = this.createElement("div", { className: `${this.className}-wrapper` }, children);
             if (isFloatingMode) {
                 wrapper.classList.add(`${this.className}-has-floating-panel`);
@@ -4211,7 +4219,7 @@ section.${c}.${c}-has-track-changes {
             var comment = this.document.commentsPart?.commentMap[commentRef.id];
             if (!comment)
                 return null;
-            if (this.options.trackChangesMode === 'margin' || this.options.trackChangesMode === 'floating') {
+            if (this.options.commentsMode === 'margin' || this.options.commentsMode === 'floating') {
                 return this.renderCommentWithMargin(comment);
             }
             const frg = new DocumentFragment();
@@ -4955,7 +4963,8 @@ section.${c}.${c}-has-track-changes {
         renderComments: false,
         renderAltChunks: true,
         trackChangesMode: 'inline',
-        trackChangesMarginWidth: '220px'
+        trackChangesMarginWidth: '220px',
+        commentsMode: 'inline'
     };
     function parseAsync(data, userOptions) {
         const ops = { ...defaultOptions, ...userOptions };

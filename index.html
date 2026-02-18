@@ -190,6 +190,12 @@
             <span class="text-sm font-medium">Comments</span>
         </label>
 
+        <select id="commentsMode" class="px-3 py-2 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-sm focus:ring-2 focus:ring-accent-500 focus:border-transparent disabled:opacity-50 disabled:cursor-not-allowed focus-ring transition-colors" disabled>
+            <option value="inline">Inline</option>
+            <option value="margin">Margin</option>
+            <option value="floating">Floating</option>
+        </select>
+
         <div class="flex-1"></div>
 
         <!-- Dark mode toggle -->
@@ -293,6 +299,7 @@
         const trackChangesToggle = document.querySelector("#trackChangesToggle");
         const trackChangesModeSelect = document.querySelector("#trackChangesMode");
         const commentsToggle = document.querySelector("#commentsToggle");
+        const commentsModeSelect = document.querySelector("#commentsMode");
         const pageBreaksToggle = document.querySelector("#pageBreaksToggle");
 
         async function renderDocx(file) {
@@ -330,6 +337,12 @@
 
         commentsToggle.addEventListener("change", ev => {
             docxOptions.renderComments = commentsToggle.checked;
+            commentsModeSelect.disabled = !commentsToggle.checked;
+            renderDocx(currentDocument);
+        });
+
+        commentsModeSelect.addEventListener("change", ev => {
+            docxOptions.commentsMode = commentsModeSelect.value;
             renderDocx(currentDocument);
         });
 
@@ -341,7 +354,7 @@
         const menu = document.querySelector("#optionsMenu");
 
         // Filter to only show boolean options, excluding options that have dedicated controls
-        const excludeOptions = ['className', 'trackChangesMode', 'trackChangesMarginWidth', 'renderChanges', 'renderComments', 'breakPages', 'ignoreLastRenderedPageBreak'];
+        const excludeOptions = ['className', 'trackChangesMode', 'trackChangesMarginWidth', 'commentsMode', 'renderChanges', 'renderComments', 'breakPages', 'ignoreLastRenderedPageBreak'];
         Object.keys(docxOptions)
             .filter(key => !excludeOptions.some(exc => key.toLowerCase().includes(exc.toLowerCase())))
             .filter(key => typeof docxOptions[key] === 'boolean')
