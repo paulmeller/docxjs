@@ -407,10 +407,12 @@ export class HtmlRenderer {
 
 	renderSections(document: DocumentElement): HTMLElement[] {
 		const result = [];
-		const isMarginMode = (this.options.renderChanges && this.options.trackChangesMode === 'margin')
-			|| (this.options.renderComments && this.options.commentsMode === 'margin');
-		const isFloatingMode = (this.options.renderChanges && this.options.trackChangesMode === 'floating')
-			|| (this.options.renderComments && this.options.commentsMode === 'floating');
+		const tcMargin = this.options.renderChanges && this.options.trackChangesMode === 'margin';
+		const tcFloating = this.options.renderChanges && this.options.trackChangesMode === 'floating';
+		const cmMargin = this.options.renderComments && this.options.commentsMode === 'margin';
+		const cmFloating = this.options.renderComments && this.options.commentsMode === 'floating';
+		const isMarginMode = tcMargin || cmMargin;
+		const isFloatingMode = tcFloating || cmFloating;
 
 		this.processElement(document);
 		const sections = this.splitBySection(document.children, document.props);
@@ -462,16 +464,23 @@ export class HtmlRenderer {
 				pageElement.appendChild(marginContainer);
 				pageElement.classList.add(`${this.className}-has-track-changes`);
 
-				// Capture the current trackChangeMap for this page before it gets reset
-				const pageTrackChangeMap = { ...this.trackChangeMap };
+				// Filter entries: only include TC entries if TC is margin, comment entries if comments is margin
+				const pageTrackChangeMap: Record<string, TrackChangeEntry> = {};
+				for (const [key, entry] of Object.entries(this.trackChangeMap)) {
+					const isComment = entry.annotation.changeType === 'comment';
+					if (isComment ? cmMargin : tcMargin) pageTrackChangeMap[key] = entry;
+				}
 
 				// Schedule annotation rendering after DOM is ready
 				this.later(() => this.renderMarginAnnotationsFromMap(marginContainer, pageElement, pageTrackChangeMap));
 			}
 
 			if (isFloatingMode) {
-				// Collect all track changes into the floating map
-				Object.assign(this.floatingTrackChangeMap, this.trackChangeMap);
+				// Filter entries: only include TC entries if TC is floating, comment entries if comments is floating
+				for (const [key, entry] of Object.entries(this.trackChangeMap)) {
+					const isComment = entry.annotation.changeType === 'comment';
+					if (isComment ? cmFloating : tcFloating) this.floatingTrackChangeMap[key] = entry;
+				}
 			}
 
 			result.push(pageElement);

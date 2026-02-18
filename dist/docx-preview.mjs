@@ -3211,10 +3211,12 @@ class HtmlRenderer {
     }
     renderSections(document) {
         const result = [];
-        const isMarginMode = (this.options.renderChanges && this.options.trackChangesMode === 'margin')
-            || (this.options.renderComments && this.options.commentsMode === 'margin');
-        const isFloatingMode = (this.options.renderChanges && this.options.trackChangesMode === 'floating')
-            || (this.options.renderComments && this.options.commentsMode === 'floating');
+        const tcMargin = this.options.renderChanges && this.options.trackChangesMode === 'margin';
+        const tcFloating = this.options.renderChanges && this.options.trackChangesMode === 'floating';
+        const cmMargin = this.options.renderComments && this.options.commentsMode === 'margin';
+        const cmFloating = this.options.renderComments && this.options.commentsMode === 'floating';
+        const isMarginMode = tcMargin || cmMargin;
+        const isFloatingMode = tcFloating || cmFloating;
         this.processElement(document);
         const sections = this.splitBySection(document.children, document.props);
         const pages = this.groupByPageBreaks(sections);
@@ -3250,11 +3252,20 @@ class HtmlRenderer {
             if (isMarginMode) {
                 pageElement.appendChild(marginContainer);
                 pageElement.classList.add(`${this.className}-has-track-changes`);
-                const pageTrackChangeMap = { ...this.trackChangeMap };
+                const pageTrackChangeMap = {};
+                for (const [key, entry] of Object.entries(this.trackChangeMap)) {
+                    const isComment = entry.annotation.changeType === 'comment';
+                    if (isComment ? cmMargin : tcMargin)
+                        pageTrackChangeMap[key] = entry;
+                }
                 this.later(() => this.renderMarginAnnotationsFromMap(marginContainer, pageElement, pageTrackChangeMap));
             }
             if (isFloatingMode) {
-                Object.assign(this.floatingTrackChangeMap, this.trackChangeMap);
+                for (const [key, entry] of Object.entries(this.trackChangeMap)) {
+                    const isComment = entry.annotation.changeType === 'comment';
+                    if (isComment ? cmFloating : tcFloating)
+                        this.floatingTrackChangeMap[key] = entry;
+                }
             }
             result.push(pageElement);
             prevProps = props;
