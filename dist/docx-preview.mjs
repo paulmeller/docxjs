@@ -3870,7 +3870,7 @@ section.${c}.${c}-has-track-changes {
     left: 100%;
     height: 100%;
     background: transparent;
-    padding-left: 16px;
+    padding-left: 24px;
     box-sizing: border-box;
 }
 .${c}-track-changes-floating .${c}-tc-annotation {
