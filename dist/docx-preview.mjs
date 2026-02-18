@@ -2984,6 +2984,7 @@ class HtmlRenderer {
         this.styleMap = null;
         this.tasks = [];
         this.trackChangeMap = {};
+        this.postRenderTasks = [];
         if (this.options.renderComments && globalThis.Highlight) {
             this.commentHighlight = new Highlight();
         }
@@ -3616,7 +3617,9 @@ section.${c}>footer { z-index: 1; }
 }
 `;
         }
-        if (this.options.renderChanges) {
+        const needsAnnotationCSS = this.options.renderChanges
+            || (this.options.renderComments && this.options.commentsMode !== 'inline');
+        if (needsAnnotationCSS) {
             styleText += `
 /* Track Changes Margin - page is expanded to fit annotations */
 section.${c}.${c}-has-track-changes {
@@ -3810,7 +3813,8 @@ section.${c}.${c}-has-track-changes {
     background: var(--docx-bg-secondary);
 }
 
-.${c}-comment-marker { border-bottom: 2px solid var(--docx-color-comment); }
+.${c}-comment-marker { border-bottom: 2px solid var(--docx-color-comment); display: inline-block; cursor: pointer; vertical-align: middle; line-height: 1; }
+.${c}-comment-marker svg { width: 14px; height: 14px; stroke: var(--docx-color-comment); fill: none; }
 
 /* Annotation card layout: avatar + body */
 .${c}-tc-annotation-row {
@@ -4271,6 +4275,7 @@ section.${c}.${c}-has-track-changes {
             className: `${this.className}-comment-marker`
         });
         marker.dataset.commentId = comment.id;
+        marker.innerHTML = `<svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"></path></svg>`;
         let commentText = '';
         const extractText = (el) => {
             if (el.text)
