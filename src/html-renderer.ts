@@ -1193,7 +1193,7 @@ section.${c}.${c}-has-track-changes {
 .${c}-track-changes-floating {
     position: absolute;
     top: 0;
-    left: 100%;
+    left: calc(100% + 16px);
     height: 100%;
     background: transparent;
     padding-left: 24px;
