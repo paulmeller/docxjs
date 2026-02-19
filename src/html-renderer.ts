@@ -890,7 +890,7 @@ section.${c}>footer { z-index: 1; }
 .${c}-comment-date {
     font-size: 12px;
     color: var(--docx-text-secondary);
-    margin-bottom: 8px;
+    margin-bottom: 4px;
 }
 `
 		}
@@ -1022,22 +1022,22 @@ section.${c}.${c}-has-track-changes {
 }
 
 .${c}-tc-popover-header {
-    display: flex;
-    align-items: baseline;
-    gap: 8px;
-    margin-bottom: 4px;
+    margin-bottom: 2px;
 }
 .${c}-tc-popover-author {
     font-family: inherit;
     font-size: 13px;
     font-weight: 500;
     color: var(--docx-text-primary);
+    margin-bottom: 2px;
 }
 .${c}-tc-popover-date {
     font-family: inherit;
     font-size: 12px;
     font-weight: 400;
     color: var(--docx-text-secondary);
+    display: block;
+    margin-bottom: 4px;
 }
 .${c}-tc-popover-content {
     font-family: inherit;
@@ -1066,9 +1066,9 @@ section.${c}.${c}-has-track-changes {
 .${c}-tc-annotation {
     background: var(--docx-bg-primary);
     border-bottom: 1px solid var(--docx-border-light);
-    padding: 10px 12px;
-    font-size: 12px;
-    line-height: 1.45;
+    padding: 12px;
+    font-size: 13px;
+    line-height: 1.4;
     cursor: pointer;
     transition: background-color var(--docx-transition-fast);
 }
@@ -1096,75 +1096,42 @@ section.${c}.${c}-has-track-changes {
 .${c}-comment-marker { border-bottom: 2px solid var(--docx-color-comment); display: inline-block; cursor: pointer; vertical-align: middle; line-height: 1; }
 .${c}-comment-marker svg { width: 14px; height: 14px; stroke: var(--docx-color-comment); fill: none; }
 
-/* Annotation card layout: avatar + body */
+/* Annotation card layout */
 .${c}-tc-annotation-row {
-    display: flex;
-    gap: 8px;
-    align-items: flex-start;
+    display: block;
 }
-
-/* Avatar circle */
-.${c}-tc-annotation-avatar {
-    width: 24px;
-    height: 24px;
-    min-width: 24px;
-    border-radius: 50%;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    font-size: 10px;
-    font-weight: 500;
-    color: #fff;
-    background: var(--docx-text-muted);
-    text-transform: uppercase;
-    line-height: 1;
-    user-select: none;
-}
-.${c}-tc-annotation-inserted .${c}-tc-annotation-avatar { background: var(--docx-color-inserted); }
-.${c}-tc-annotation-deleted .${c}-tc-annotation-avatar { background: var(--docx-color-deleted); }
-.${c}-tc-annotation-moveFrom .${c}-tc-annotation-avatar,
-.${c}-tc-annotation-moveTo .${c}-tc-annotation-avatar { background: var(--docx-color-moved); }
-.${c}-tc-annotation-formatChange .${c}-tc-annotation-avatar { background: var(--docx-color-format); }
-.${c}-tc-annotation-comment .${c}-tc-annotation-avatar { background: var(--docx-color-comment); }
 
 /* Body: header + content */
 .${c}-tc-annotation-body {
-    flex: 1;
-    min-width: 0;
 }
 
-/* Header: author + date inline */
+/* Header: author + date stacked */
 .${c}-tc-annotation-header {
-    display: flex;
-    align-items: baseline;
-    gap: 6px;
-    margin-bottom: 3px;
+    margin-bottom: 2px;
 }
 .${c}-tc-annotation-author {
     font-family: inherit;
-    font-size: 12px;
+    font-size: 13px;
     font-weight: 500;
     color: var(--docx-text-primary);
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
+    margin-bottom: 2px;
 }
 .${c}-tc-annotation-date {
     font-family: inherit;
-    font-size: 11px;
+    font-size: 12px;
     font-weight: 400;
-    color: var(--docx-text-muted);
-    margin-left: auto;
-    white-space: nowrap;
+    color: var(--docx-text-secondary);
+    display: block;
+    margin-bottom: 4px;
 }
 
 /* Content area */
 .${c}-tc-annotation-content {
     font-family: inherit;
-    font-size: 12px;
+    font-size: 13px;
     font-weight: 400;
     color: var(--docx-text-secondary);
-    line-height: 1.45;
+    line-height: 1.4;
 }
 .${c}-tc-annotation-type {
     font-family: inherit;
@@ -2131,18 +2098,6 @@ section.${c}.${c}-has-track-changes {
 		const row = this.createElement("div", {
 			className: `${this.className}-tc-annotation-row`
 		});
-
-		// Avatar with initials
-		const avatar = this.createElement("div", {
-			className: `${this.className}-tc-annotation-avatar`
-		});
-		const authorName = annotation.author || '';
-		const nameParts = authorName.trim().split(/\s+/);
-		const initials = nameParts.length >= 2
-			? (nameParts[0][0] + nameParts[nameParts.length - 1][0]).toUpperCase()
-			: authorName.substring(0, 2).toUpperCase();
-		avatar.textContent = initials;
-		row.appendChild(avatar);
 
 		// Body: header + content
 		const body = this.createElement("div", {
