@@ -3646,7 +3646,7 @@ section.${c}.${c}-has-track-changes {
     left: 8px;
     right: 8px;
     border: 1px solid var(--docx-border-light);
-    border-radius: var(--docx-radius-md);
+    border-radius: var(--docx-radius-sm);
     box-shadow: var(--docx-shadow-sm);
 }
 
@@ -3791,9 +3791,9 @@ section.${c}.${c}-has-track-changes {
 .${c}-tc-annotation {
     background: var(--docx-bg-primary);
     border-bottom: 1px solid var(--docx-border-light);
-    padding: 14px 16px;
-    font-size: 13px;
-    line-height: 1.5;
+    padding: 10px 12px;
+    font-size: 12px;
+    line-height: 1.45;
     cursor: pointer;
     transition: background-color var(--docx-transition-fast);
 }
@@ -3815,6 +3815,7 @@ section.${c}.${c}-has-track-changes {
 }
 .${c}-tc-annotation-active {
     background: var(--docx-bg-secondary);
+    box-shadow: inset 3px 0 0 var(--docx-color-accent);
 }
 
 .${c}-comment-marker { border-bottom: 2px solid var(--docx-color-comment); display: inline-block; cursor: pointer; vertical-align: middle; line-height: 1; }
@@ -3823,21 +3824,21 @@ section.${c}.${c}-has-track-changes {
 /* Annotation card layout: avatar + body */
 .${c}-tc-annotation-row {
     display: flex;
-    gap: 12px;
+    gap: 8px;
     align-items: flex-start;
 }
 
 /* Avatar circle */
 .${c}-tc-annotation-avatar {
-    width: 32px;
-    height: 32px;
-    min-width: 32px;
+    width: 24px;
+    height: 24px;
+    min-width: 24px;
     border-radius: 50%;
     display: flex;
     align-items: center;
     justify-content: center;
-    font-size: 12px;
-    font-weight: 600;
+    font-size: 10px;
+    font-weight: 500;
     color: #fff;
     background: var(--docx-text-muted);
     text-transform: uppercase;
@@ -3861,18 +3862,21 @@ section.${c}.${c}-has-track-changes {
 .${c}-tc-annotation-header {
     display: flex;
     align-items: baseline;
-    gap: 8px;
-    margin-bottom: 4px;
+    gap: 6px;
+    margin-bottom: 3px;
 }
 .${c}-tc-annotation-author {
     font-family: inherit;
-    font-size: 13px;
-    font-weight: 600;
+    font-size: 12px;
+    font-weight: 500;
     color: var(--docx-text-primary);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
 }
 .${c}-tc-annotation-date {
     font-family: inherit;
-    font-size: 12px;
+    font-size: 11px;
     font-weight: 400;
     color: var(--docx-text-muted);
     margin-left: auto;
@@ -3882,17 +3886,17 @@ section.${c}.${c}-has-track-changes {
 /* Content area */
 .${c}-tc-annotation-content {
     font-family: inherit;
-    font-size: 13px;
+    font-size: 12px;
     font-weight: 400;
     color: var(--docx-text-secondary);
-    line-height: 1.5;
+    line-height: 1.45;
 }
 .${c}-tc-annotation-type {
     font-family: inherit;
     font-size: 11px;
-    font-weight: 600;
-    text-transform: uppercase;
-    letter-spacing: 0.3px;
+    font-weight: 500;
+    text-transform: none;
+    letter-spacing: 0;
 }
 .${c}-tc-annotation-inserted .${c}-tc-annotation-type { color: var(--docx-color-inserted); }
 .${c}-tc-annotation-deleted .${c}-tc-annotation-type { color: var(--docx-color-deleted); }
@@ -3921,7 +3925,7 @@ section.${c}.${c}-has-track-changes {
     left: calc(100% + 16px);
     height: 100%;
     background: transparent;
-    padding-left: 24px;
+    padding-left: 12px;
     box-sizing: border-box;
 }
 .${c}-track-changes-floating .${c}-tc-annotation {
@@ -3929,7 +3933,7 @@ section.${c}.${c}-has-track-changes {
     left: 0;
     right: 0;
     border: 1px solid var(--docx-border-light);
-    border-radius: var(--docx-radius-md);
+    border-radius: var(--docx-radius-sm);
     box-shadow: var(--docx-shadow-sm);
 }
 
