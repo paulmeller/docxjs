@@ -3565,6 +3565,13 @@ section.${c}>footer { z-index: 1; }
 .${c}-comment-ref svg { width: 14px; height: 14px; stroke: var(--docx-color-comment); fill: none; }
 
 /* Comment Popover */
+.${c}-comment-popover,
+.${c}-comment-popover * {
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif !important;
+    font-style: normal !important;
+    font-size: 11px !important;
+    line-height: 1.4 !important;
+}
 .${c}-comment-popover {
     opacity: 0;
     visibility: hidden;
@@ -3605,13 +3612,13 @@ section.${c}>footer { z-index: 1; }
     pointer-events: auto;
 }
 .${c}-comment-author {
-    font-size: 12px;
-    font-weight: 500;
+    font-size: 11px;
+    font-weight: 600;
     color: var(--docx-text-primary);
     margin-bottom: 2px;
 }
 .${c}-comment-date {
-    font-size: 11px;
+    font-size: 10px;
     color: var(--docx-text-secondary);
     margin-bottom: 4px;
 }
@@ -3700,6 +3707,8 @@ section.${c}.${c}-has-track-changes {
 .${c}-tc-popover * {
     font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif !important;
     font-style: normal !important;
+    font-size: 11px !important;
+    line-height: 1.4 !important;
 }
 .${c}-tc-popover {
     opacity: 0;
@@ -3713,8 +3722,6 @@ section.${c}.${c}-has-track-changes {
     border: 1px solid var(--docx-border-color);
     border-radius: var(--docx-radius-md);
     width: 240px;
-    font-size: 13px;
-    line-height: 1.4;
     top: 100%;
     left: 0;
     margin-top: 8px;
@@ -3747,14 +3754,14 @@ section.${c}.${c}-has-track-changes {
 }
 .${c}-tc-popover-author {
     font-family: inherit;
-    font-size: 12px;
-    font-weight: 500;
+    font-size: 11px;
+    font-weight: 600;
     color: var(--docx-text-primary);
     margin-bottom: 2px;
 }
 .${c}-tc-popover-date {
     font-family: inherit;
-    font-size: 11px;
+    font-size: 10px;
     font-weight: 400;
     color: var(--docx-text-secondary);
     display: block;
@@ -3762,13 +3769,13 @@ section.${c}.${c}-has-track-changes {
 }
 .${c}-tc-popover-content {
     font-family: inherit;
-    font-size: 12px;
+    font-size: 11px;
     font-weight: 400;
     color: var(--docx-text-secondary);
 }
 .${c}-tc-popover-type {
     font-family: inherit;
-    font-size: 11px;
+    font-size: 10px;
     font-weight: 500;
     text-transform: uppercase;
     letter-spacing: 0.3px;
@@ -3783,13 +3790,13 @@ section.${c}.${c}-has-track-changes {
 .${c}-tc-annotation * {
     font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif !important;
     font-style: normal !important;
+    font-size: 11px !important;
+    line-height: 1.4 !important;
 }
 .${c}-tc-annotation {
     background: var(--docx-bg-primary);
     border-bottom: 1px solid var(--docx-border-light);
     padding: 12px;
-    font-size: 12px;
-    line-height: 1.4;
     cursor: pointer;
     transition: background-color var(--docx-transition-fast);
 }
@@ -3832,14 +3839,14 @@ section.${c}.${c}-has-track-changes {
 }
 .${c}-tc-annotation-author {
     font-family: inherit;
-    font-size: 12px;
-    font-weight: 500;
+    font-size: 11px;
+    font-weight: 600;
     color: var(--docx-text-primary);
     margin-bottom: 2px;
 }
 .${c}-tc-annotation-date {
     font-family: inherit;
-    font-size: 11px;
+    font-size: 10px !important;
     font-weight: 400;
     color: var(--docx-text-secondary);
     display: block;
@@ -3849,14 +3856,14 @@ section.${c}.${c}-has-track-changes {
 /* Content area */
 .${c}-tc-annotation-content {
     font-family: inherit;
-    font-size: 12px;
+    font-size: 11px;
     font-weight: 400;
     color: var(--docx-text-secondary);
     line-height: 1.4;
 }
 .${c}-tc-annotation-type {
     font-family: inherit;
-    font-size: 11px;
+    font-size: 10px !important;
     font-weight: 500;
     text-transform: none;
     letter-spacing: 0;
