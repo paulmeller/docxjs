@@ -3605,13 +3605,13 @@ section.${c}>footer { z-index: 1; }
     pointer-events: auto;
 }
 .${c}-comment-author {
-    font-size: 13px;
+    font-size: 12px;
     font-weight: 500;
     color: var(--docx-text-primary);
     margin-bottom: 2px;
 }
 .${c}-comment-date {
-    font-size: 12px;
+    font-size: 11px;
     color: var(--docx-text-secondary);
     margin-bottom: 4px;
 }
@@ -3747,14 +3747,14 @@ section.${c}.${c}-has-track-changes {
 }
 .${c}-tc-popover-author {
     font-family: inherit;
-    font-size: 13px;
+    font-size: 12px;
     font-weight: 500;
     color: var(--docx-text-primary);
     margin-bottom: 2px;
 }
 .${c}-tc-popover-date {
     font-family: inherit;
-    font-size: 12px;
+    font-size: 11px;
     font-weight: 400;
     color: var(--docx-text-secondary);
     display: block;
@@ -3762,7 +3762,7 @@ section.${c}.${c}-has-track-changes {
 }
 .${c}-tc-popover-content {
     font-family: inherit;
-    font-size: 13px;
+    font-size: 12px;
     font-weight: 400;
     color: var(--docx-text-secondary);
 }
@@ -3788,7 +3788,7 @@ section.${c}.${c}-has-track-changes {
     background: var(--docx-bg-primary);
     border-bottom: 1px solid var(--docx-border-light);
     padding: 12px;
-    font-size: 13px;
+    font-size: 12px;
     line-height: 1.4;
     cursor: pointer;
     transition: background-color var(--docx-transition-fast);
@@ -3832,14 +3832,14 @@ section.${c}.${c}-has-track-changes {
 }
 .${c}-tc-annotation-author {
     font-family: inherit;
-    font-size: 13px;
+    font-size: 12px;
     font-weight: 500;
     color: var(--docx-text-primary);
     margin-bottom: 2px;
 }
 .${c}-tc-annotation-date {
     font-family: inherit;
-    font-size: 12px;
+    font-size: 11px;
     font-weight: 400;
     color: var(--docx-text-secondary);
     display: block;
@@ -3849,7 +3849,7 @@ section.${c}.${c}-has-track-changes {
 /* Content area */
 .${c}-tc-annotation-content {
     font-family: inherit;
-    font-size: 13px;
+    font-size: 12px;
     font-weight: 400;
     color: var(--docx-text-secondary);
     line-height: 1.4;
