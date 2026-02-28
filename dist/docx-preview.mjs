@@ -3174,24 +3174,24 @@ class HtmlRenderer {
     createPageElement(className, props) {
         var elem = this.createElement("section", { className });
         if (props) {
+            const isMarginMode = (this.options.renderChanges && this.options.trackChangesMode === 'margin')
+                || (this.options.renderComments && this.options.commentsMode === 'margin');
             if (props.pageMargins) {
                 elem.style.paddingLeft = props.pageMargins.left;
-                elem.style.paddingRight = props.pageMargins.right;
                 elem.style.paddingTop = props.pageMargins.top;
                 elem.style.paddingBottom = props.pageMargins.bottom;
+                elem.style.paddingRight = props.pageMargins.right;
             }
             if (props.pageSize) {
                 if (!this.options.ignoreWidth) {
                     let width = props.pageSize.width;
-                    const needsMarginWidth = (this.options.renderChanges && this.options.trackChangesMode === 'margin')
-                        || (this.options.renderComments && this.options.commentsMode === 'margin');
-                    if (needsMarginWidth) {
-                        const marginWidth = parseFloat(this.options.trackChangesMarginWidth) || 220;
-                        const pageWidth = parseFloat(width) || 0;
-                        const unit = width.replace(/[\d.]/g, '') || 'px';
-                        width = `${pageWidth + marginWidth + 16}${unit}`;
+                    if (isMarginMode) {
+                        const marginWidthStr = this.options.trackChangesMarginWidth || '220px';
+                        elem.style.width = `calc(${width} + ${marginWidthStr} + 16px)`;
                     }
-                    elem.style.width = width;
+                    else {
+                        elem.style.width = width;
+                    }
                 }
                 if (!this.options.ignoreHeight)
                     elem.style.minHeight = props.pageSize.height;
@@ -3201,6 +3201,13 @@ class HtmlRenderer {
     }
     createSectionContent(props) {
         var elem = this.createElement("article");
+        const isMarginMode = (this.options.renderChanges && this.options.trackChangesMode === 'margin')
+            || (this.options.renderComments && this.options.commentsMode === 'margin');
+        if (isMarginMode) {
+            elem.style.overflow = "hidden";
+            const marginWidth = this.options.trackChangesMarginWidth || '220px';
+            elem.style.maxWidth = `calc(100% - ${marginWidth} - 16px)`;
+        }
         if (props.columns && props.columns.numberOfColumns) {
             elem.style.columnCount = `${props.columns.numberOfColumns}`;
             elem.style.columnGap = props.columns.space;
@@ -3427,16 +3434,19 @@ class HtmlRenderer {
             return rectA.top - rectB.top;
         });
         const GAP = 8;
-        let lastBottom = 0;
+        let lastBottom = -GAP;
         for (const annotation of sortedAnnotations) {
             const annotEl = this.createAnnotationElement(annotation);
             floatingPanel.appendChild(annotEl);
             annotation.element = annotEl;
             const contentRect = annotation.contentElement.getBoundingClientRect();
             const targetTop = contentRect.top - pageRect.top;
-            const actualTop = Math.max(targetTop, lastBottom);
-            annotEl.style.top = `${actualTop}px`;
-            lastBottom = actualTop + annotEl.offsetHeight + GAP;
+            const desiredTop = Math.max(targetTop, lastBottom + GAP);
+            const currentPos = annotEl.offsetTop;
+            if (desiredTop > currentPos) {
+                annotEl.style.marginTop = `${desiredTop - currentPos}px`;
+            }
+            lastBottom = annotEl.offsetTop + annotEl.offsetHeight;
             const handleActivate = () => {
                 floatingPanel.querySelectorAll(`.${this.className}-tc-annotation-active`).forEach(el => {
                     el.classList.remove(`${this.className}-tc-annotation-active`);
@@ -3645,9 +3655,9 @@ section.${c}.${c}-has-track-changes {
     border-left: 1px solid var(--docx-border-color);
 }
 .${c}-track-changes-margin .${c}-tc-annotation {
-    position: absolute;
-    left: 8px;
-    right: 8px;
+    position: relative;
+    margin-left: 8px;
+    margin-right: 8px;
     border: 1px solid var(--docx-border-light);
     border-radius: var(--docx-radius-sm);
     box-shadow: var(--docx-shadow-sm);
@@ -3899,9 +3909,7 @@ section.${c}.${c}-has-track-changes {
     box-sizing: border-box;
 }
 .${c}-track-changes-floating .${c}-tc-annotation {
-    position: absolute;
-    left: 0;
-    right: 0;
+    position: relative;
     border: 1px solid var(--docx-border-light);
     border-radius: var(--docx-radius-sm);
     box-shadow: var(--docx-shadow-sm);
@@ -4498,17 +4506,19 @@ section.${c}.${c}-has-track-changes {
             return rectA.top - rectB.top;
         });
         const containerRect = marginContainer.getBoundingClientRect();
-        contentWrapper.getBoundingClientRect();
         const GAP = 8;
-        let lastBottom = 0;
+        let lastBottom = -GAP;
         for (const annotation of sortedAnnotations) {
             const contentRect = annotation.contentElement.getBoundingClientRect();
             const targetTop = contentRect.top - containerRect.top;
             const annotEl = this.createAnnotationElement(annotation);
             marginContainer.appendChild(annotEl);
-            const actualTop = Math.max(targetTop, lastBottom);
-            annotEl.style.top = `${actualTop}px`;
-            lastBottom = actualTop + annotEl.offsetHeight + GAP;
+            const desiredTop = Math.max(targetTop, lastBottom + GAP);
+            const currentPos = annotEl.offsetTop;
+            if (desiredTop > currentPos) {
+                annotEl.style.marginTop = `${desiredTop - currentPos}px`;
+            }
+            lastBottom = annotEl.offsetTop + annotEl.offsetHeight;
             annotation.element = annotEl;
             const handleActivate = () => {
                 annotation.contentElement?.scrollIntoView({ behavior: 'smooth', block: 'center' });
