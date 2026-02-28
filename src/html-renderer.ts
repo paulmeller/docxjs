@@ -2431,6 +2431,14 @@ section.${c}.${c}-has-track-changes {
 
 		const result = this.renderVmlChildElement(elem);
 
+		// Clear fill on rect text boxes — white fill creates visible artifacts
+		// when the SVG extends past the page boundary (section overflow:visible)
+		if (elem.tagName === "rect" && elem.children.some(
+			c => c.type == DomType.VmlElement && (c as VmlElement).tagName === "foreignObject"
+		)) {
+			result.setAttribute("fill", "none");
+		}
+
 		if (elem.imageHref?.id) {
 			this.tasks.push(this.document?.loadDocumentImage(elem.imageHref.id, this.currentPart)
 				.then(x => result.setAttribute("href", x)));
