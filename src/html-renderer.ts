@@ -2427,6 +2427,7 @@ section.${c}.${c}-has-track-changes {
 		var container = this.createSvgElement("svg");
 
 		container.setAttribute("style", elem.cssStyleText);
+		container.setAttribute("overflow", "hidden");
 
 		const result = this.renderVmlChildElement(elem);
 
