@@ -5331,13 +5331,9 @@ section.${c}.${c}-has-track-changes {
             const section = panel.closest(`section.${c}`);
             if (!section)
                 return;
-            const cs = getComputedStyle(section);
-            const minH = parseFloat(cs.minHeight);
-            if (!minH || isNaN(minH))
+            const availableHeight = panel.clientHeight;
+            if (!availableHeight)
                 return;
-            const padTop = parseFloat(cs.paddingTop) || 0;
-            const padBottom = parseFloat(cs.paddingBottom) || 0;
-            const availableHeight = minH - padTop - padBottom;
             cards.sort((a, b) => {
                 const aEl = section.querySelector(`article [data-tc-id="${CSS.escape(a.dataset.tcId)}"]`);
                 const bEl = section.querySelector(`article [data-tc-id="${CSS.escape(b.dataset.tcId)}"]`);

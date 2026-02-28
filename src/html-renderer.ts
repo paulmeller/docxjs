@@ -2943,12 +2943,10 @@ section.${c}.${c}-has-track-changes {
 		const section = panel.closest(`section.${c}`) as HTMLElement;
 		if (!section) return;
 
-		const cs = getComputedStyle(section);
-		const minH = parseFloat(cs.minHeight);
-		if (!minH || isNaN(minH)) return;
-		const padTop = parseFloat(cs.paddingTop) || 0;
-		const padBottom = parseFloat(cs.paddingBottom) || 0;
-		const availableHeight = minH - padTop - padBottom;
+		// Use the panel's own rendered height — accounts for padding differences
+		// between floating panels (no vertical padding) and margin panels (inherited padding)
+		const availableHeight = panel.clientHeight;
+		if (!availableHeight) return;
 
 		// Sort cards by content element vertical position
 		cards.sort((a, b) => {
