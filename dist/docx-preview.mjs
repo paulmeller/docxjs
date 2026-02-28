@@ -103,6 +103,133 @@ function asArray(val) {
 function clamp(val, min, max) {
     return min > val ? min : (max < val ? max : val);
 }
+function emfToSvgDataUrl(buffer) {
+    try {
+        const buf = new Uint8Array(buffer);
+        const dv = new DataView(buffer);
+        if (dv.getUint32(0, true) !== 1)
+            return null;
+        const headerSize = dv.getUint32(4, true);
+        const boundsL = dv.getInt32(8, true), boundsT = dv.getInt32(12, true);
+        const boundsR = dv.getInt32(16, true), boundsB = dv.getInt32(20, true);
+        let winOrgX = 0, winOrgY = 0, winExtX = boundsR - boundsL, winExtY = boundsB - boundsT;
+        let vpExtX = boundsR - boundsL, vpExtY = boundsB - boundsT;
+        let curX = 0, curY = 0;
+        let pathData = '';
+        let inPath = false;
+        const objects = {};
+        let brushColor = '#000000';
+        const svgPaths = [];
+        let offset = headerSize;
+        while (offset < buf.length - 8) {
+            const type = dv.getUint32(offset, true);
+            const size = dv.getUint32(offset + 4, true);
+            if (size < 8 || offset + size > buf.length)
+                break;
+            if (type === 14)
+                break;
+            switch (type) {
+                case 10:
+                    winOrgX = dv.getInt32(offset + 8, true);
+                    winOrgY = dv.getInt32(offset + 12, true);
+                    break;
+                case 9:
+                    winExtX = dv.getInt32(offset + 8, true);
+                    winExtY = dv.getInt32(offset + 12, true);
+                    break;
+                case 11:
+                    vpExtX = dv.getInt32(offset + 8, true);
+                    vpExtY = dv.getInt32(offset + 12, true);
+                    break;
+                case 27:
+                    curX = dv.getInt32(offset + 8, true);
+                    curY = dv.getInt32(offset + 12, true);
+                    if (inPath)
+                        pathData += `M${curX} ${curY}`;
+                    break;
+                case 89: {
+                    const cnt = dv.getUint32(offset + 24, true);
+                    let p = offset + 28;
+                    for (let i = 0; i < cnt; i++, p += 4) {
+                        const x = dv.getInt16(p, true), y = dv.getInt16(p + 2, true);
+                        if (inPath)
+                            pathData += `L${x} ${y}`;
+                        curX = x;
+                        curY = y;
+                    }
+                    break;
+                }
+                case 88: {
+                    const cnt = dv.getUint32(offset + 24, true);
+                    let p = offset + 28;
+                    for (let i = 0; i + 2 < cnt; i += 3, p += 12) {
+                        const x1 = dv.getInt16(p, true), y1 = dv.getInt16(p + 2, true), x2 = dv.getInt16(p + 4, true), y2 = dv.getInt16(p + 6, true), x3 = dv.getInt16(p + 8, true), y3 = dv.getInt16(p + 10, true);
+                        if (inPath)
+                            pathData += `C${x1} ${y1} ${x2} ${y2} ${x3} ${y3}`;
+                        curX = x3;
+                        curY = y3;
+                    }
+                    break;
+                }
+                case 59:
+                    inPath = true;
+                    pathData = '';
+                    break;
+                case 60:
+                    inPath = false;
+                    break;
+                case 61:
+                    if (inPath)
+                        pathData += 'Z';
+                    break;
+                case 62:
+                case 63:
+                    if (pathData)
+                        svgPaths.push(`<path d="${pathData}" fill="${brushColor}" fill-rule="evenodd"/>`);
+                    pathData = '';
+                    break;
+                case 64:
+                    if (pathData)
+                        svgPaths.push(`<path d="${pathData}" fill="none" stroke="${brushColor}" stroke-width="1"/>`);
+                    pathData = '';
+                    break;
+                case 39: {
+                    const ih = dv.getUint32(offset + 8, true), st = dv.getUint32(offset + 12, true);
+                    const r = buf[offset + 16], g = buf[offset + 17], b = buf[offset + 18];
+                    objects[ih] = { type: 'brush', color: st === 0 ? `rgb(${r},${g},${b})` : 'none' };
+                    break;
+                }
+                case 37: {
+                    const ih = dv.getUint32(offset + 8, true);
+                    if (ih & 0x80000000) {
+                        const s = ih & 0x7FFFFFFF;
+                        if (s === 0)
+                            brushColor = '#ffffff';
+                        else if (s === 7)
+                            brushColor = '#000000';
+                        else if (s === 5)
+                            brushColor = 'none';
+                    }
+                    else if (objects[ih]?.type === 'brush') {
+                        brushColor = objects[ih].color;
+                    }
+                    break;
+                }
+                case 40:
+                    delete objects[dv.getUint32(offset + 8, true)];
+                    break;
+            }
+            offset += size;
+        }
+        if (svgPaths.length === 0)
+            return null;
+        const svg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="${winOrgX} ${winOrgY} ${winExtX} ${winExtY}" width="${vpExtX}" height="${vpExtY}">${svgPaths.join('')}</svg>`;
+        return `data:image/svg+xml;charset=utf-8,${encodeURIComponent(svg)}`;
+    }
+    catch {
+        return null;
+    }
+}
 
 const ns$1 = {
     wordml: "http://schemas.openxmlformats.org/wordprocessingml/2006/main"};
@@ -1187,7 +1314,20 @@ class WordDocument {
         return part;
     }
     async loadDocumentImage(id, part) {
-        const x = await this.loadResource(part ?? this.documentPart, id, "blob");
+        const resolvedPart = part ?? this.documentPart;
+        const path = this.getPathById(resolvedPart, id);
+        if (path) {
+            const ext = path.split('.').pop()?.toLowerCase();
+            if (ext === 'wmf' || ext === 'emf') {
+                const arrayBuf = await this._package.load(path, "arraybuffer");
+                if (arrayBuf) {
+                    const svgUrl = emfToSvgDataUrl(arrayBuf);
+                    if (svgUrl)
+                        return svgUrl;
+                }
+            }
+        }
+        const x = await this.loadResource(resolvedPart, id, "blob");
         return this.blobToURL(x);
     }
     async loadNumberingImage(id) {
@@ -2951,6 +3091,9 @@ const ns = {
     svg: "http://www.w3.org/2000/svg",
     mathML: "http://www.w3.org/1998/Math/MathML"
 };
+const ANNOTATION_GAP = 8;
+const COMPRESSED_GAP = 2;
+const EXPAND_BUTTON_HEIGHT = 32;
 class HtmlRenderer {
     constructor(htmlDocument) {
         this.htmlDocument = htmlDocument;
@@ -3054,6 +3197,7 @@ class HtmlRenderer {
             CSS.highlights.set(`${this.className}-tc-format`, this.trackChangeHighlights.formatChange);
         }
         this.postRenderTasks.forEach(t => t());
+        this.splitOverflowingPages(bodyContainer);
         await Promise.allSettled(this.tasks);
         this.refreshTabStops();
     }
@@ -3925,6 +4069,36 @@ section.${c}.${c}-has-track-changes {
     outline: 2px solid var(--docx-color-accent);
     outline-offset: 2px;
 }
+
+/* Annotation overflow: collapsed state */
+[data-overflow="collapsed"] .${c}-tc-annotation-content {
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    max-height: 1.4em;
+}
+[data-overflow="collapsed"] .${c}-tc-annotation-date { display: none; }
+[data-overflow="collapsed"] .${c}-tc-annotation { padding: 6px 12px; }
+
+/* Annotation overflow: expand/collapse buttons */
+.${c}-tc-expand-btn,
+.${c}-tc-collapse-btn {
+    font-size: 11px;
+    font-weight: 500;
+    color: var(--docx-color-accent);
+    background: var(--docx-bg-primary);
+    border: 1px solid var(--docx-border-color);
+    border-radius: var(--docx-radius-sm);
+    padding: 6px 12px;
+    cursor: pointer;
+    text-align: center;
+    position: relative;
+    margin: 0 8px;
+}
+.${c}-tc-expand-btn:hover,
+.${c}-tc-collapse-btn:hover {
+    background: var(--docx-bg-tertiary);
+}
 `;
         }
         return this.createStyleElement(styleText);
@@ -4261,6 +4435,7 @@ section.${c}.${c}-has-track-changes {
             className: `${this.className}-comment-marker`
         });
         marker.dataset.commentId = comment.id;
+        marker.dataset.tcId = `comment-${comment.id}`;
         marker.innerHTML = `<svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"></path></svg>`;
         let commentText = '';
         const extractText = (el) => {
@@ -4318,6 +4493,12 @@ section.${c}.${c}-has-track-changes {
         if (elem.rotation)
             transform = `rotate(${elem.rotation}deg) ${transform ?? ''}`;
         result.style.transform = transform?.trim();
+        result.onerror = () => {
+            result.style.display = 'none';
+            if (result.parentElement) {
+                result.parentElement.style.display = 'none';
+            }
+        };
         if (this.document) {
             this.tasks.push(this.document.loadDocumentImage(elem.src, this.currentPart).then(x => {
                 result.src = x;
@@ -4383,6 +4564,7 @@ section.${c}.${c}-has-track-changes {
         const wrapper = this.createElement("span", {
             className: `${this.className}-tc-inline-wrapper`
         });
+        wrapper.dataset.tcId = elem.id;
         const contentWrapper = this.createElement("span", {
             className: `${this.className}-tc-inline ${this.className}-tc-inline-${changeType}`
         });
@@ -4548,6 +4730,7 @@ section.${c}.${c}-has-track-changes {
         const el = this.createElement("div", {
             className: `${this.className}-tc-annotation ${this.className}-tc-annotation-${annotation.changeType}`
         });
+        el.dataset.tcId = annotation.id;
         el.setAttribute('role', 'button');
         el.setAttribute('tabindex', '0');
         el.setAttribute('aria-label', `${typeLabels[annotation.changeType]} by ${annotation.author}: ${annotation.previewText}`);
@@ -4978,6 +5161,210 @@ section.${c}.${c}-has-track-changes {
     }
     later(func) {
         this.postRenderTasks.push(func);
+    }
+    splitOverflowingPages(bodyContainer) {
+        const wrapper = bodyContainer.querySelector(`.${this.className}-wrapper`);
+        if (!wrapper)
+            return;
+        const sections = Array.from(wrapper.querySelectorAll(`:scope > section.${this.className}`));
+        let i = 0;
+        while (i < sections.length) {
+            const newSection = this.splitSectionIfNeeded(sections[i], wrapper);
+            if (newSection) {
+                sections.splice(i + 1, 0, newSection);
+            }
+            i++;
+        }
+        this.recalcAllAnnotations(wrapper);
+    }
+    splitSectionIfNeeded(section, wrapper) {
+        const article = section.querySelector(':scope > article');
+        if (!article || article.children.length <= 1)
+            return null;
+        const cs = getComputedStyle(section);
+        const intendedHeight = parseFloat(cs.minHeight);
+        if (!intendedHeight || isNaN(intendedHeight))
+            return null;
+        const actualHeight = section.getBoundingClientRect().height;
+        if (actualHeight <= intendedHeight + 1)
+            return null;
+        const paddingTop = parseFloat(cs.paddingTop) || 0;
+        const paddingBottom = parseFloat(cs.paddingBottom) || 0;
+        let nonArticleHeight = 0;
+        for (const child of Array.from(section.children)) {
+            if (child === article)
+                continue;
+            const pos = getComputedStyle(child).position;
+            if (pos === 'absolute' || pos === 'fixed')
+                continue;
+            nonArticleHeight += child.getBoundingClientRect().height;
+        }
+        const availableHeight = intendedHeight - paddingTop - paddingBottom - nonArticleHeight;
+        if (availableHeight <= 0)
+            return null;
+        const children = Array.from(article.children);
+        const articleTop = article.getBoundingClientRect().top;
+        let breakIndex = -1;
+        for (let i = 0; i < children.length; i++) {
+            const childRect = children[i].getBoundingClientRect();
+            const childBottom = childRect.bottom - articleTop;
+            if (childBottom > availableHeight && i > 0) {
+                breakIndex = i;
+                break;
+            }
+        }
+        if (breakIndex <= 0)
+            return null;
+        const newSection = section.cloneNode(false);
+        const newArticle = article.cloneNode(false);
+        const overflow = children.slice(breakIndex);
+        for (const child of overflow) {
+            newArticle.appendChild(child);
+        }
+        newSection.appendChild(newArticle);
+        const marginAside = section.querySelector(`:scope > .${this.className}-track-changes-margin`);
+        if (marginAside) {
+            const newAside = marginAside.cloneNode(false);
+            newAside.innerHTML = '';
+            newSection.appendChild(newAside);
+            this.distributeAnnotationCards(marginAside, newAside, newArticle);
+        }
+        const floatingPanel = section.querySelector(`:scope > .${this.className}-track-changes-floating`);
+        if (floatingPanel) {
+            const newPanel = floatingPanel.cloneNode(false);
+            newPanel.innerHTML = '';
+            newSection.appendChild(newPanel);
+            newSection.style.position = 'relative';
+            newSection.style.overflow = 'visible';
+            this.distributeAnnotationCards(floatingPanel, newPanel, newArticle);
+        }
+        wrapper.insertBefore(newSection, section.nextSibling);
+        return newSection;
+    }
+    distributeAnnotationCards(originalPanel, newPanel, newArticle) {
+        const cards = Array.from(originalPanel.querySelectorAll('[data-tc-id]'));
+        for (const card of cards) {
+            const tcId = card.dataset.tcId;
+            if (!tcId)
+                continue;
+            if (newArticle.querySelector(`[data-tc-id="${CSS.escape(tcId)}"]`)) {
+                card.style.marginTop = '';
+                newPanel.appendChild(card);
+            }
+        }
+    }
+    recalcAllAnnotations(wrapper) {
+        const panels = wrapper.querySelectorAll(`.${this.className}-track-changes-margin, .${this.className}-track-changes-floating`);
+        for (const panel of Array.from(panels)) {
+            this.recalcPanelPositions(panel);
+        }
+    }
+    offsetTopRelativeTo(el, ancestor) {
+        let y = 0;
+        let cur = el;
+        while (cur && cur !== ancestor) {
+            y += cur.offsetTop;
+            cur = cur.offsetParent;
+        }
+        return y;
+    }
+    reposWithGap(cards, panel, section, gap) {
+        let lastBottom = -gap;
+        for (const card of cards) {
+            card.style.marginTop = '';
+            panel.appendChild(card);
+            const tcId = card.dataset.tcId;
+            if (!tcId)
+                continue;
+            const contentEl = section.querySelector(`article [data-tc-id="${CSS.escape(tcId)}"]`);
+            if (!contentEl)
+                continue;
+            const targetTop = this.offsetTopRelativeTo(contentEl, section)
+                - this.offsetTopRelativeTo(panel, section);
+            const desiredTop = Math.max(targetTop, lastBottom + gap);
+            const currentPos = card.offsetTop;
+            if (desiredTop > currentPos) {
+                card.style.marginTop = `${desiredTop - currentPos}px`;
+            }
+            lastBottom = card.offsetTop + card.offsetHeight;
+        }
+        return lastBottom;
+    }
+    findCutoffIndex(cards, availableHeight, buttonHeight) {
+        const limit = availableHeight - buttonHeight;
+        for (let i = 0; i < cards.length; i++) {
+            const bottom = cards[i].offsetTop + cards[i].offsetHeight;
+            if (bottom > limit && i > 0)
+                return i;
+        }
+        return cards.length;
+    }
+    recalcPanelPositions(panel) {
+        const c = this.className;
+        panel.querySelectorAll(`.${c}-tc-expand-btn, .${c}-tc-collapse-btn`)
+            .forEach(btn => btn.remove());
+        panel.removeAttribute('data-overflow');
+        panel.style.overflowY = '';
+        panel.style.maxHeight = '';
+        panel.scrollTop = 0;
+        const cards = Array.from(panel.querySelectorAll(`:scope > [data-tc-id]`));
+        if (cards.length === 0)
+            return;
+        for (const card of cards) {
+            card.style.display = '';
+        }
+        const section = panel.closest(`section.${c}`);
+        if (!section)
+            return;
+        const cs = getComputedStyle(section);
+        const minH = parseFloat(cs.minHeight);
+        if (!minH || isNaN(minH))
+            return;
+        const padTop = parseFloat(cs.paddingTop) || 0;
+        const padBottom = parseFloat(cs.paddingBottom) || 0;
+        const availableHeight = minH - padTop - padBottom;
+        cards.sort((a, b) => {
+            const aEl = section.querySelector(`article [data-tc-id="${CSS.escape(a.dataset.tcId)}"]`);
+            const bEl = section.querySelector(`article [data-tc-id="${CSS.escape(b.dataset.tcId)}"]`);
+            if (!aEl || !bEl)
+                return 0;
+            return this.offsetTopRelativeTo(aEl, section)
+                - this.offsetTopRelativeTo(bEl, section);
+        });
+        const lastBottom = this.reposWithGap(cards, panel, section, ANNOTATION_GAP);
+        if (lastBottom > availableHeight) {
+            panel.setAttribute('data-overflow', 'collapsed');
+            this.reposWithGap(cards, panel, section, COMPRESSED_GAP);
+            const cutoff = this.findCutoffIndex(cards, availableHeight, EXPAND_BUTTON_HEIGHT);
+            const hiddenCount = cards.length - cutoff;
+            if (hiddenCount > 0) {
+                for (let i = cutoff; i < cards.length; i++) {
+                    cards[i].style.display = 'none';
+                }
+                const expandBtn = this.htmlDocument.createElement('button');
+                expandBtn.className = `${c}-tc-expand-btn`;
+                expandBtn.textContent = `+${hiddenCount} more`;
+                panel.appendChild(expandBtn);
+                expandBtn.addEventListener('click', () => {
+                    expandBtn.remove();
+                    panel.removeAttribute('data-overflow');
+                    for (const card of cards) {
+                        card.style.display = '';
+                    }
+                    panel.style.overflowY = 'auto';
+                    panel.style.maxHeight = `${availableHeight}px`;
+                    this.reposWithGap(cards, panel, section, ANNOTATION_GAP);
+                    const collapseBtn = this.htmlDocument.createElement('button');
+                    collapseBtn.className = `${c}-tc-collapse-btn`;
+                    collapseBtn.textContent = 'Show less';
+                    panel.appendChild(collapseBtn);
+                    collapseBtn.addEventListener('click', () => {
+                        panel.scrollTop = 0;
+                        this.recalcPanelPositions(panel);
+                    });
+                });
+            }
+        }
     }
 }
 function removeAllElements(elem) {

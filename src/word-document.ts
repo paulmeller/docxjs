@@ -6,7 +6,7 @@ import { Part } from './common/part';
 import { FontTablePart } from './font-table/font-table';
 import { OpenXmlPackage } from './common/open-xml-package';
 import { DocumentPart } from './document/document-part';
-import { blobToBase64, resolvePath, splitPath } from './utils';
+import { blobToBase64, emfToSvgDataUrl, resolvePath, splitPath } from './utils';
 import { NumberingPart } from './numbering/numbering-part';
 import { StylesPart } from './styles/styles-part';
 import { FooterPart, HeaderPart } from "./header-footer/parts";
@@ -156,7 +156,22 @@ export class WordDocument {
 	}
 
 	async loadDocumentImage(id: string, part?: Part): Promise<string> {
-		const x = await this.loadResource(part ?? this.documentPart, id, "blob");
+		const resolvedPart = part ?? this.documentPart;
+		const path = this.getPathById(resolvedPart, id);
+
+		// Convert EMF/WMF vector images to SVG (browsers cannot render metafiles)
+		if (path) {
+			const ext = path.split('.').pop()?.toLowerCase();
+			if (ext === 'wmf' || ext === 'emf') {
+				const arrayBuf = await this._package.load(path, "arraybuffer");
+				if (arrayBuf) {
+					const svgUrl = emfToSvgDataUrl(arrayBuf);
+					if (svgUrl) return svgUrl;
+				}
+			}
+		}
+
+		const x = await this.loadResource(resolvedPart, id, "blob");
 		return this.blobToURL(x);
 	}
 

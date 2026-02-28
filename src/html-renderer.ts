@@ -32,6 +32,11 @@ const ns = {
 	mathML: "http://www.w3.org/1998/Math/MathML"
 }
 
+// Annotation overflow constants
+const ANNOTATION_GAP = 8;
+const COMPRESSED_GAP = 2;
+const EXPAND_BUTTON_HEIGHT = 32;
+
 interface CellPos {
 	col: number;
 	row: number;
@@ -213,6 +218,10 @@ export class HtmlRenderer {
 		}
 
 		this.postRenderTasks.forEach(t => t());
+
+		// Split pages whose rendered content overflows minHeight,
+		// then recalculate annotation positions with overflow handling
+		this.splitOverflowingPages(bodyContainer);
 
 		await Promise.allSettled(this.tasks);
 
@@ -1206,6 +1215,36 @@ section.${c}.${c}-has-track-changes {
     outline: 2px solid var(--docx-color-accent);
     outline-offset: 2px;
 }
+
+/* Annotation overflow: collapsed state */
+[data-overflow="collapsed"] .${c}-tc-annotation-content {
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    max-height: 1.4em;
+}
+[data-overflow="collapsed"] .${c}-tc-annotation-date { display: none; }
+[data-overflow="collapsed"] .${c}-tc-annotation { padding: 6px 12px; }
+
+/* Annotation overflow: expand/collapse buttons */
+.${c}-tc-expand-btn,
+.${c}-tc-collapse-btn {
+    font-size: 11px;
+    font-weight: 500;
+    color: var(--docx-color-accent);
+    background: var(--docx-bg-primary);
+    border: 1px solid var(--docx-border-color);
+    border-radius: var(--docx-radius-sm);
+    padding: 6px 12px;
+    cursor: pointer;
+    text-align: center;
+    position: relative;
+    margin: 0 8px;
+}
+.${c}-tc-expand-btn:hover,
+.${c}-tc-collapse-btn:hover {
+    background: var(--docx-bg-tertiary);
+}
 `;
 		}
 
@@ -1735,6 +1774,7 @@ section.${c}.${c}-has-track-changes {
 			className: `${this.className}-comment-marker`
 		});
 		marker.dataset.commentId = comment.id;
+		marker.dataset.tcId = `comment-${comment.id}`;
 		// Lucide message-square icon so the anchor point is visible
 		marker.innerHTML = `<svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"></path></svg>`;
 
@@ -1812,6 +1852,15 @@ section.${c}.${c}-has-track-changes {
 			transform = `rotate(${elem.rotation}deg) ${transform ?? ''}`;
 
 		result.style.transform = transform?.trim();
+
+		// Hide images that fail to load (e.g. WMF/EMF formats unsupported by browsers)
+		result.onerror = () => {
+			result.style.display = 'none';
+			// Also hide the drawing wrapper div that has explicit dimensions
+			if (result.parentElement) {
+				result.parentElement.style.display = 'none';
+			}
+		};
 
 		if (this.document) {
 			this.tasks.push(this.document.loadDocumentImage(elem.src, this.currentPart).then(x => {
@@ -1898,6 +1947,7 @@ section.${c}.${c}-has-track-changes {
 		const wrapper = this.createElement("span", {
 			className: `${this.className}-tc-inline-wrapper`
 		});
+		wrapper.dataset.tcId = elem.id;
 
 		// Render the content with styling
 		const contentWrapper = this.createElement("span", {
@@ -2108,6 +2158,9 @@ section.${c}.${c}-has-track-changes {
 		const el = this.createElement("div", {
 			className: `${this.className}-tc-annotation ${this.className}-tc-annotation-${annotation.changeType}`
 		});
+
+		// Link annotation card to its content element via data attribute
+		el.dataset.tcId = annotation.id;
 
 		// Accessibility: make annotation focusable and interactive
 		el.setAttribute('role', 'button');
@@ -2651,8 +2704,300 @@ section.${c}.${c}-has-track-changes {
 		return this.htmlDocument.createComment(text);
 	}
 
-	later(func: Function) { 
+	later(func: Function) {
 		this.postRenderTasks.push(func);
+	}
+
+	// ── Post-render page splitting ──────────────────────────────────────
+
+	/**
+	 * Walk rendered sections and split any that exceed their intended
+	 * page height (minHeight) into multiple pages. Redistributes
+	 * annotation cards to the correct pages and recalculates positions.
+	 */
+	splitOverflowingPages(bodyContainer: HTMLElement): void {
+		const wrapper = bodyContainer.querySelector(`.${this.className}-wrapper`);
+		if (!wrapper) return;
+
+		const sections = Array.from(
+			wrapper.querySelectorAll(`:scope > section.${this.className}`)
+		) as HTMLElement[];
+		let i = 0;
+
+		while (i < sections.length) {
+			const newSection = this.splitSectionIfNeeded(sections[i], wrapper);
+			if (newSection) {
+				sections.splice(i + 1, 0, newSection);
+			}
+			i++;
+		}
+
+		// After all splitting, recalculate annotation positions
+		this.recalcAllAnnotations(wrapper as HTMLElement);
+	}
+
+	private splitSectionIfNeeded(section: HTMLElement, wrapper: Element): HTMLElement | null {
+		const article = section.querySelector(':scope > article') as HTMLElement;
+		if (!article || article.children.length <= 1) return null;
+
+		const cs = getComputedStyle(section);
+		const intendedHeight = parseFloat(cs.minHeight);
+		if (!intendedHeight || isNaN(intendedHeight)) return null;
+
+		const actualHeight = section.getBoundingClientRect().height;
+		if (actualHeight <= intendedHeight + 1) return null;
+
+		const paddingTop = parseFloat(cs.paddingTop) || 0;
+		const paddingBottom = parseFloat(cs.paddingBottom) || 0;
+
+		// Account for non-article, in-flow siblings (headers, footers)
+		let nonArticleHeight = 0;
+		for (const child of Array.from(section.children)) {
+			if (child === article) continue;
+			const pos = getComputedStyle(child as HTMLElement).position;
+			if (pos === 'absolute' || pos === 'fixed') continue;
+			nonArticleHeight += (child as HTMLElement).getBoundingClientRect().height;
+		}
+
+		const availableHeight = intendedHeight - paddingTop - paddingBottom - nonArticleHeight;
+		if (availableHeight <= 0) return null;
+
+		const children = Array.from(article.children) as HTMLElement[];
+		const articleTop = article.getBoundingClientRect().top;
+		let breakIndex = -1;
+
+		for (let i = 0; i < children.length; i++) {
+			const childRect = children[i].getBoundingClientRect();
+			const childBottom = childRect.bottom - articleTop;
+			if (childBottom > availableHeight && i > 0) {
+				breakIndex = i;
+				break;
+			}
+		}
+
+		if (breakIndex <= 0) return null;
+
+		const newSection = section.cloneNode(false) as HTMLElement;
+		const newArticle = article.cloneNode(false) as HTMLElement;
+
+		const overflow = children.slice(breakIndex);
+		for (const child of overflow) {
+			newArticle.appendChild(child);
+		}
+		newSection.appendChild(newArticle);
+
+		// Handle margin aside
+		const marginAside = section.querySelector(
+			`:scope > .${this.className}-track-changes-margin`
+		) as HTMLElement;
+		if (marginAside) {
+			const newAside = marginAside.cloneNode(false) as HTMLElement;
+			newAside.innerHTML = '';
+			newSection.appendChild(newAside);
+			this.distributeAnnotationCards(marginAside, newAside, newArticle);
+		}
+
+		// Handle floating panel
+		const floatingPanel = section.querySelector(
+			`:scope > .${this.className}-track-changes-floating`
+		) as HTMLElement;
+		if (floatingPanel) {
+			const newPanel = floatingPanel.cloneNode(false) as HTMLElement;
+			newPanel.innerHTML = '';
+			newSection.appendChild(newPanel);
+			newSection.style.position = 'relative';
+			newSection.style.overflow = 'visible';
+			this.distributeAnnotationCards(floatingPanel, newPanel, newArticle);
+		}
+
+		wrapper.insertBefore(newSection, section.nextSibling);
+		return newSection;
+	}
+
+	/** Move annotation cards whose content element is in newArticle */
+	private distributeAnnotationCards(
+		originalPanel: HTMLElement,
+		newPanel: HTMLElement,
+		newArticle: HTMLElement
+	): void {
+		const cards = Array.from(originalPanel.querySelectorAll('[data-tc-id]')) as HTMLElement[];
+		for (const card of cards) {
+			const tcId = card.dataset.tcId;
+			if (!tcId) continue;
+			if (newArticle.querySelector(`[data-tc-id="${CSS.escape(tcId)}"]`)) {
+				card.style.marginTop = '';
+				newPanel.appendChild(card);
+			}
+		}
+	}
+
+	// ── Annotation position recalculation with overflow handling ────────
+
+	private recalcAllAnnotations(wrapper: HTMLElement): void {
+		const panels = wrapper.querySelectorAll(
+			`.${this.className}-track-changes-margin, .${this.className}-track-changes-floating`
+		);
+		for (const panel of Array.from(panels)) {
+			this.recalcPanelPositions(panel as HTMLElement);
+		}
+	}
+
+	/** Walk offsetParent chain from el up to ancestor for zoom-independent Y offset */
+	private offsetTopRelativeTo(el: HTMLElement, ancestor: HTMLElement): number {
+		let y = 0;
+		let cur: HTMLElement | null = el;
+		while (cur && cur !== ancestor) {
+			y += cur.offsetTop;
+			cur = cur.offsetParent as HTMLElement | null;
+		}
+		return y;
+	}
+
+	/**
+	 * Position cards with marginTop so each aligns with its content element
+	 * (or stacks below the previous card). Uses offsetTop/offsetHeight
+	 * (zoom-independent). Returns the bottom of the last card.
+	 */
+	private reposWithGap(
+		cards: HTMLElement[],
+		panel: HTMLElement,
+		section: HTMLElement,
+		gap: number
+	): number {
+		let lastBottom = -gap;
+
+		for (const card of cards) {
+			card.style.marginTop = '';
+			panel.appendChild(card);
+
+			const tcId = card.dataset.tcId;
+			if (!tcId) continue;
+			const contentEl = section.querySelector(
+				`article [data-tc-id="${CSS.escape(tcId)}"]`
+			) as HTMLElement;
+			if (!contentEl) continue;
+
+			const targetTop = this.offsetTopRelativeTo(contentEl, section)
+				- this.offsetTopRelativeTo(panel, section);
+			const desiredTop = Math.max(targetTop, lastBottom + gap);
+			const currentPos = card.offsetTop;
+			if (desiredTop > currentPos) {
+				card.style.marginTop = `${desiredTop - currentPos}px`;
+			}
+			lastBottom = card.offsetTop + card.offsetHeight;
+		}
+
+		return lastBottom;
+	}
+
+	/**
+	 * Find the index of the first card whose bottom exceeds available space
+	 * (reserving room for the expand button). Always returns at least 1.
+	 */
+	private findCutoffIndex(
+		cards: HTMLElement[],
+		availableHeight: number,
+		buttonHeight: number
+	): number {
+		const limit = availableHeight - buttonHeight;
+		for (let i = 0; i < cards.length; i++) {
+			const bottom = cards[i].offsetTop + cards[i].offsetHeight;
+			if (bottom > limit && i > 0) return i;
+		}
+		return cards.length;
+	}
+
+	private recalcPanelPositions(panel: HTMLElement): void {
+		const c = this.className;
+
+		// Clean up previous overflow state
+		panel.querySelectorAll(`.${c}-tc-expand-btn, .${c}-tc-collapse-btn`)
+			.forEach(btn => btn.remove());
+		panel.removeAttribute('data-overflow');
+		panel.style.overflowY = '';
+		panel.style.maxHeight = '';
+		panel.scrollTop = 0;
+
+		const cards = Array.from(
+			panel.querySelectorAll(`:scope > [data-tc-id]`)
+		) as HTMLElement[];
+		if (cards.length === 0) return;
+
+		// Show all cards (may have been hidden previously)
+		for (const card of cards) {
+			card.style.display = '';
+		}
+
+		const section = panel.closest(`section.${c}`) as HTMLElement;
+		if (!section) return;
+
+		const cs = getComputedStyle(section);
+		const minH = parseFloat(cs.minHeight);
+		if (!minH || isNaN(minH)) return;
+		const padTop = parseFloat(cs.paddingTop) || 0;
+		const padBottom = parseFloat(cs.paddingBottom) || 0;
+		const availableHeight = minH - padTop - padBottom;
+
+		// Sort cards by content element vertical position (scoped to section)
+		cards.sort((a, b) => {
+			const aEl = section.querySelector(
+				`article [data-tc-id="${CSS.escape(a.dataset.tcId!)}"]`
+			) as HTMLElement;
+			const bEl = section.querySelector(
+				`article [data-tc-id="${CSS.escape(b.dataset.tcId!)}"]`
+			) as HTMLElement;
+			if (!aEl || !bEl) return 0;
+			return this.offsetTopRelativeTo(aEl, section)
+				- this.offsetTopRelativeTo(bEl, section);
+		});
+
+		// Phase 1: position normally
+		const lastBottom = this.reposWithGap(cards, panel, section, ANNOTATION_GAP);
+
+		// Phase 2: if overflow, collapse excess
+		if (lastBottom > availableHeight) {
+			panel.setAttribute('data-overflow', 'collapsed');
+
+			// Reposition with compressed gap
+			this.reposWithGap(cards, panel, section, COMPRESSED_GAP);
+
+			const cutoff = this.findCutoffIndex(cards, availableHeight, EXPAND_BUTTON_HEIGHT);
+			const hiddenCount = cards.length - cutoff;
+
+			if (hiddenCount > 0) {
+				for (let i = cutoff; i < cards.length; i++) {
+					cards[i].style.display = 'none';
+				}
+
+				const expandBtn = this.htmlDocument.createElement('button');
+				expandBtn.className = `${c}-tc-expand-btn`;
+				expandBtn.textContent = `+${hiddenCount} more`;
+				panel.appendChild(expandBtn);
+
+				expandBtn.addEventListener('click', () => {
+					expandBtn.remove();
+					panel.removeAttribute('data-overflow');
+
+					for (const card of cards) {
+						card.style.display = '';
+					}
+					panel.style.overflowY = 'auto';
+					panel.style.maxHeight = `${availableHeight}px`;
+
+					this.reposWithGap(cards, panel, section, ANNOTATION_GAP);
+
+					const collapseBtn = this.htmlDocument.createElement('button');
+					collapseBtn.className = `${c}-tc-collapse-btn`;
+					collapseBtn.textContent = 'Show less';
+					panel.appendChild(collapseBtn);
+
+					collapseBtn.addEventListener('click', () => {
+						panel.scrollTop = 0;
+						this.recalcPanelPositions(panel);
+					});
+				});
+			}
+		}
 	}
 }
 
