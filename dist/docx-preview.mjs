@@ -4065,6 +4065,7 @@ section.${c}.${c}-has-track-changes {
     background: transparent;
     padding-left: 12px;
     box-sizing: border-box;
+    overflow: hidden;
 }
 .${c}-track-changes-floating .${c}-tc-annotation {
     position: relative;
@@ -5357,7 +5358,7 @@ section.${c}.${c}-has-track-changes {
             const extraPerGap = extraSpace / (cards.length - 1);
             for (let i = 1; i < cards.length; i++) {
                 const existing = parseFloat(cards[i].style.marginTop) || 0;
-                cards[i].style.marginTop = `${existing + extraPerGap * i}px`;
+                cards[i].style.marginTop = `${existing + extraPerGap}px`;
             }
         }
     }
