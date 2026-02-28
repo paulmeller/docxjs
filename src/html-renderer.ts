@@ -2977,14 +2977,18 @@ section.${c}.${c}-has-track-changes {
 			}
 		} else if (cards.length > 1 && lastBottom < availableHeight) {
 			// Cards don't fill the page — distribute extra space between them
-			// so annotations spread to the bottom of the page
-			const extraSpace = availableHeight - lastBottom;
-			const extraPerGap = extraSpace / (cards.length - 1);
-
-			// Add equal extra spacing to each gap between cards
-			for (let i = 1; i < cards.length; i++) {
-				const existing = parseFloat(cards[i].style.marginTop) || 0;
-				cards[i].style.marginTop = `${existing + extraPerGap}px`;
+			// so annotations spread to the bottom of the page.
+			// Subtract last card height so it doesn't overflow past the edge.
+			const lastCardH = cards[cards.length - 1].offsetHeight;
+			const target = availableHeight - lastCardH;
+			const cardsTopSpan = lastBottom - lastCardH; // top of last card
+			const extraSpace = Math.max(0, target - cardsTopSpan);
+			if (extraSpace > 0) {
+				const extraPerGap = extraSpace / (cards.length - 1);
+				for (let i = 1; i < cards.length; i++) {
+					const existing = parseFloat(cards[i].style.marginTop) || 0;
+					cards[i].style.marginTop = `${existing + extraPerGap}px`;
+				}
 			}
 		}
 	}
