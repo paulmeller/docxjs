@@ -725,20 +725,24 @@ export class HtmlRenderer {
 			}
 			lastBottom = annotEl.offsetTop + annotEl.offsetHeight;
 
-			// Click handler - highlight and scroll
+			// Click handler - select card and highlight content
 			const handleActivate = () => {
-				// Remove active class from all
+				const wasActive = annotEl.classList.contains(`${this.className}-tc-annotation-active`);
+
+				// Deselect all
 				floatingPanel.querySelectorAll(`.${this.className}-tc-annotation-active`).forEach(el => {
 					el.classList.remove(`${this.className}-tc-annotation-active`);
 				});
-				// Add active to clicked
-				annotEl.classList.add(`${this.className}-tc-annotation-active`);
 
-				annotation.contentElement?.scrollIntoView({ behavior: 'smooth', block: 'center' });
-				annotation.contentElement?.classList.add(`${this.className}-tc-highlight`);
-				setTimeout(() => {
-					annotation.contentElement?.classList.remove(`${this.className}-tc-highlight`);
-				}, 2000);
+				if (!wasActive) {
+					annotEl.classList.add(`${this.className}-tc-annotation-active`);
+
+					annotation.contentElement?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+					annotation.contentElement?.classList.add(`${this.className}-tc-highlight`);
+					setTimeout(() => {
+						annotation.contentElement?.classList.remove(`${this.className}-tc-highlight`);
+					}, 2000);
+				}
 			};
 			annotEl.addEventListener('click', handleActivate);
 			// Keyboard accessibility: Enter/Space to activate
@@ -1095,19 +1099,10 @@ section.${c}.${c}-has-track-changes {
 }
 .${c}-tc-annotation {
     background: var(--docx-bg-primary);
-    border-bottom: 1px solid var(--docx-border-light);
-    padding: 12px;
+    border-left: 3px solid var(--docx-border-light);
+    padding: 8px 10px;
     cursor: pointer;
-    transition: background-color var(--docx-transition-fast);
-}
-.${c}-tc-annotation:first-child {
-    border-top-left-radius: var(--docx-radius-md);
-    border-top-right-radius: var(--docx-radius-md);
-}
-.${c}-tc-annotation:last-child {
-    border-bottom: none;
-    border-bottom-left-radius: var(--docx-radius-md);
-    border-bottom-right-radius: var(--docx-radius-md);
+    transition: background-color var(--docx-transition-fast), box-shadow var(--docx-transition-fast);
 }
 .${c}-tc-annotation:hover {
     background: var(--docx-bg-secondary);
@@ -1116,9 +1111,19 @@ section.${c}.${c}-has-track-changes {
     outline: 2px solid var(--docx-color-accent);
     outline-offset: -2px;
 }
+/* Colored left border per change type */
+.${c}-tc-annotation-inserted { border-left-color: var(--docx-color-inserted); }
+.${c}-tc-annotation-deleted { border-left-color: var(--docx-color-deleted); }
+.${c}-tc-annotation-moveFrom,
+.${c}-tc-annotation-moveTo { border-left-color: var(--docx-color-moved); }
+.${c}-tc-annotation-formatChange { border-left-color: var(--docx-color-format); }
+.${c}-tc-annotation-comment { border-left-color: var(--docx-color-comment); }
+/* Active/selected card */
 .${c}-tc-annotation-active {
     background: var(--docx-bg-secondary);
-    box-shadow: inset 3px 0 0 var(--docx-color-accent);
+    box-shadow: 0 1px 4px rgba(60, 64, 67, 0.2);
+    z-index: 1;
+    position: relative;
 }
 
 .${c}-comment-marker { border-bottom: 2px solid var(--docx-color-comment); display: inline-block; cursor: pointer; vertical-align: middle; line-height: 1; }
@@ -1133,33 +1138,44 @@ section.${c}.${c}-has-track-changes {
 .${c}-tc-annotation-body {
 }
 
-/* Header: author + date stacked */
+/* Header: author + date inline */
 .${c}-tc-annotation-header {
+    display: flex;
+    align-items: baseline;
+    gap: 6px;
     margin-bottom: 2px;
 }
 .${c}-tc-annotation-author {
     font-family: inherit;
-    font-size: 11px;
+    font-size: 11px !important;
     font-weight: 600;
     color: var(--docx-text-primary);
-    margin-bottom: 2px;
+    white-space: nowrap;
 }
 .${c}-tc-annotation-date {
     font-family: inherit;
     font-size: 10px !important;
     font-weight: 400;
-    color: var(--docx-text-secondary);
-    display: block;
-    margin-bottom: 4px;
+    color: var(--docx-text-muted);
+    white-space: nowrap;
 }
 
-/* Content area */
+/* Content area — clamped to 3 lines by default */
 .${c}-tc-annotation-content {
     font-family: inherit;
     font-size: 11px;
     font-weight: 400;
     color: var(--docx-text-secondary);
     line-height: 1.4;
+    display: -webkit-box;
+    -webkit-line-clamp: 3;
+    -webkit-box-orient: vertical;
+    overflow: hidden;
+}
+/* Active card shows full content */
+.${c}-tc-annotation-active .${c}-tc-annotation-content {
+    -webkit-line-clamp: unset;
+    overflow: visible;
 }
 .${c}-tc-annotation-type {
     font-family: inherit;
@@ -1201,9 +1217,18 @@ section.${c}.${c}-has-track-changes {
 .${c}-track-changes-floating .${c}-tc-annotation {
     position: relative;
     border: 1px solid var(--docx-border-light);
+    border-left: 3px solid var(--docx-border-light);
     border-radius: var(--docx-radius-sm);
     box-shadow: var(--docx-shadow-sm);
+    margin-bottom: 4px;
 }
+/* Re-apply colored left border in floating mode */
+.${c}-track-changes-floating .${c}-tc-annotation-inserted { border-left-color: var(--docx-color-inserted); }
+.${c}-track-changes-floating .${c}-tc-annotation-deleted { border-left-color: var(--docx-color-deleted); }
+.${c}-track-changes-floating .${c}-tc-annotation-moveFrom,
+.${c}-track-changes-floating .${c}-tc-annotation-moveTo { border-left-color: var(--docx-color-moved); }
+.${c}-track-changes-floating .${c}-tc-annotation-formatChange { border-left-color: var(--docx-color-format); }
+.${c}-track-changes-floating .${c}-tc-annotation-comment { border-left-color: var(--docx-color-comment); }
 
 /* Accessibility: Focus styles for keyboard navigation */
 .${c}-tc-inline:focus-visible {
@@ -1216,34 +1241,22 @@ section.${c}.${c}-has-track-changes {
     outline-offset: 2px;
 }
 
-/* Annotation overflow: collapsed state */
-[data-overflow="collapsed"] .${c}-tc-annotation-content {
-    white-space: nowrap;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    max-height: 1.4em;
+/* Annotation panel: scrollable when content overflows page height */
+.${c}-track-changes-floating[data-scrollable] {
+    overflow-y: auto;
+    scrollbar-width: thin;
+    scrollbar-color: var(--docx-border-color) transparent;
+    -webkit-mask-image: linear-gradient(to bottom,
+        transparent 0px, black 20px,
+        black calc(100% - 20px), transparent 100%);
+    mask-image: linear-gradient(to bottom,
+        transparent 0px, black 20px,
+        black calc(100% - 20px), transparent 100%);
 }
-[data-overflow="collapsed"] .${c}-tc-annotation-date { display: none; }
-[data-overflow="collapsed"] .${c}-tc-annotation { padding: 6px 12px; }
-
-/* Annotation overflow: expand/collapse buttons */
-.${c}-tc-expand-btn,
-.${c}-tc-collapse-btn {
-    font-size: 11px;
-    font-weight: 500;
-    color: var(--docx-color-accent);
-    background: var(--docx-bg-primary);
-    border: 1px solid var(--docx-border-color);
-    border-radius: var(--docx-radius-sm);
-    padding: 6px 12px;
-    cursor: pointer;
-    text-align: center;
-    position: relative;
-    margin: 0 8px;
-}
-.${c}-tc-expand-btn:hover,
-.${c}-tc-collapse-btn:hover {
-    background: var(--docx-bg-tertiary);
+.${c}-track-changes-floating[data-scrollable]::-webkit-scrollbar { width: 4px; }
+.${c}-track-changes-floating[data-scrollable]::-webkit-scrollbar-thumb {
+    background: var(--docx-border-color);
+    border-radius: 2px;
 }
 `;
 		}
@@ -2910,22 +2923,20 @@ section.${c}.${c}-has-track-changes {
 	private recalcPanelPositions(panel: HTMLElement): void {
 		const c = this.className;
 
-		// Clean up previous overflow state
-		panel.querySelectorAll(`.${c}-tc-expand-btn, .${c}-tc-collapse-btn`)
-			.forEach(btn => btn.remove());
+		// Clean up previous state
 		panel.removeAttribute('data-overflow');
+		panel.removeAttribute('data-scrollable');
 		panel.style.overflowY = '';
 		panel.style.maxHeight = '';
-		panel.scrollTop = 0;
 
 		const cards = Array.from(
 			panel.querySelectorAll(`:scope > [data-tc-id]`)
 		) as HTMLElement[];
 		if (cards.length === 0) return;
 
-		// Show all cards (may have been hidden previously)
 		for (const card of cards) {
 			card.style.display = '';
+			card.style.marginTop = '';
 		}
 
 		const section = panel.closest(`section.${c}`) as HTMLElement;
@@ -2938,7 +2949,7 @@ section.${c}.${c}-has-track-changes {
 		const padBottom = parseFloat(cs.paddingBottom) || 0;
 		const availableHeight = minH - padTop - padBottom;
 
-		// Sort cards by content element vertical position (scoped to section)
+		// Sort cards by content element vertical position
 		cards.sort((a, b) => {
 			const aEl = section.querySelector(
 				`article [data-tc-id="${CSS.escape(a.dataset.tcId!)}"]`
@@ -2951,51 +2962,30 @@ section.${c}.${c}-has-track-changes {
 				- this.offsetTopRelativeTo(bEl, section);
 		});
 
-		// Phase 1: position normally
-		const lastBottom = this.reposWithGap(cards, panel, section, ANNOTATION_GAP);
+		// Try positioning aligned to content with normal gap
+		let lastBottom = this.reposWithGap(cards, panel, section, ANNOTATION_GAP);
 
-		// Phase 2: if overflow, collapse excess
 		if (lastBottom > availableHeight) {
-			panel.setAttribute('data-overflow', 'collapsed');
+			// Too tall — retry with compressed gap
+			for (const card of cards) card.style.marginTop = '';
+			lastBottom = this.reposWithGap(cards, panel, section, COMPRESSED_GAP);
 
-			// Reposition with compressed gap
-			this.reposWithGap(cards, panel, section, COMPRESSED_GAP);
+			if (lastBottom > availableHeight) {
+				// Still overflows — make panel scrollable
+				panel.setAttribute('data-scrollable', '');
+				panel.style.overflowY = 'auto';
+				panel.style.maxHeight = `${availableHeight}px`;
+			}
+		} else if (cards.length > 1 && lastBottom < availableHeight) {
+			// Cards don't fill the page — distribute extra space between them
+			// so annotations spread to the bottom of the page
+			const extraSpace = availableHeight - lastBottom;
+			const extraPerGap = extraSpace / (cards.length - 1);
 
-			const cutoff = this.findCutoffIndex(cards, availableHeight, EXPAND_BUTTON_HEIGHT);
-			const hiddenCount = cards.length - cutoff;
-
-			if (hiddenCount > 0) {
-				for (let i = cutoff; i < cards.length; i++) {
-					cards[i].style.display = 'none';
-				}
-
-				const expandBtn = this.htmlDocument.createElement('button');
-				expandBtn.className = `${c}-tc-expand-btn`;
-				expandBtn.textContent = `+${hiddenCount} more`;
-				panel.appendChild(expandBtn);
-
-				expandBtn.addEventListener('click', () => {
-					expandBtn.remove();
-					panel.removeAttribute('data-overflow');
-
-					for (const card of cards) {
-						card.style.display = '';
-					}
-					panel.style.overflowY = 'auto';
-					panel.style.maxHeight = `${availableHeight}px`;
-
-					this.reposWithGap(cards, panel, section, ANNOTATION_GAP);
-
-					const collapseBtn = this.htmlDocument.createElement('button');
-					collapseBtn.className = `${c}-tc-collapse-btn`;
-					collapseBtn.textContent = 'Show less';
-					panel.appendChild(collapseBtn);
-
-					collapseBtn.addEventListener('click', () => {
-						panel.scrollTop = 0;
-						this.recalcPanelPositions(panel);
-					});
-				});
+			// Walk cards bottom-up adding cumulative extra margin
+			for (let i = 1; i < cards.length; i++) {
+				const existing = parseFloat(cards[i].style.marginTop) || 0;
+				cards[i].style.marginTop = `${existing + extraPerGap * i}px`;
 			}
 		}
 	}
