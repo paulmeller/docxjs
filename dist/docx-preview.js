@@ -4945,7 +4945,11 @@ section.${c}.${c}-has-track-changes {
         renderVmlElement(elem) {
             var container = this.createSvgElement("svg");
             container.setAttribute("style", elem.cssStyleText);
+            container.setAttribute("overflow", "hidden");
             const result = this.renderVmlChildElement(elem);
+            if (elem.tagName === "rect" && elem.children.some(c => c.type == DomType.VmlElement && c.tagName === "foreignObject")) {
+                result.setAttribute("fill", "none");
+            }
             if (elem.imageHref?.id) {
                 this.tasks.push(this.document?.loadDocumentImage(elem.imageHref.id, this.currentPart)
                     .then(x => result.setAttribute("href", x)));
