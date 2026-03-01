@@ -2971,9 +2971,12 @@ section.${c}.${c}-has-track-changes {
 		const section = panel.closest(`section.${c}`) as HTMLElement;
 		if (!section) return;
 
-		// Use the panel's own rendered height — accounts for padding differences
-		// between floating panels (no vertical padding) and margin panels (inherited padding)
-		const availableHeight = panel.clientHeight;
+		// Panel is position:absolute — its clientHeight grows with content.
+		// Use the section's height minus the panel's vertical padding as the true constraint.
+		const panelStyle = getComputedStyle(panel);
+		const panelPaddingY = (parseFloat(panelStyle.paddingTop) || 0)
+			+ (parseFloat(panelStyle.paddingBottom) || 0);
+		const availableHeight = section.clientHeight - panelPaddingY;
 		if (!availableHeight) return;
 
 		// Sort cards by content element vertical position

@@ -5340,7 +5340,10 @@ section.${c}.${c}-has-track-changes {
         const section = panel.closest(`section.${c}`);
         if (!section)
             return;
-        const availableHeight = panel.clientHeight;
+        const panelStyle = getComputedStyle(panel);
+        const panelPaddingY = (parseFloat(panelStyle.paddingTop) || 0)
+            + (parseFloat(panelStyle.paddingBottom) || 0);
+        const availableHeight = section.clientHeight - panelPaddingY;
         if (!availableHeight)
             return;
         cards.sort((a, b) => {
