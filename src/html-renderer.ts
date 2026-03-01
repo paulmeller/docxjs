@@ -3055,7 +3055,15 @@ section.${c}.${c}-has-track-changes {
 		// Shift targets upward if layout would overflow the section
 		useTargets = fitWithinBounds(cardHeights, useTargets, ANNOTATION_GAP, availableHeight);
 
-		const lastBottom = this.reposWithTargets(cards, panel, useTargets, ANNOTATION_GAP);
+		let lastBottom = this.reposWithTargets(cards, panel, useTargets, ANNOTATION_GAP);
+
+		// Card heights may change after re-append (text reflow). Re-measure and retry once.
+		if (lastBottom > availableHeight) {
+			const domHeights = cards.map(c => c.offsetHeight);
+			const domTops = cards.map(c => c.offsetTop);
+			useTargets = fitWithinBounds(domHeights, domTops, ANNOTATION_GAP, availableHeight);
+			lastBottom = this.reposWithTargets(cards, panel, useTargets, ANNOTATION_GAP);
+		}
 
 		if (lastBottom > availableHeight) {
 			panel.setAttribute('data-scrollable', '');
