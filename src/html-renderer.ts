@@ -2877,40 +2877,59 @@ section.${c}.${c}-has-track-changes {
 	}
 
 	/**
+	 * Pure math — compute card top positions without touching the DOM.
+	 * Used by the density gate to trial-layout before committing.
+	 */
+	private computePositions(
+		cardHeights: number[], targets: number[], gap: number
+	): { tops: number[], lastBottom: number } {
+		let nextTop = 0;
+		const tops: number[] = [];
+		for (let i = 0; i < cardHeights.length; i++) {
+			const top = Math.max(targets[i], nextTop);
+			tops.push(top);
+			nextTop = top + cardHeights[i] + gap;
+		}
+		const last = cardHeights.length - 1;
+		return { tops, lastBottom: tops[last] + cardHeights[last] };
+	}
+
+	/**
 	 * Position cards with marginTop so each aligns with its content element
 	 * (or stacks below the previous card). Uses offsetTop/offsetHeight
 	 * (zoom-independent). Returns the bottom of the last card.
 	 */
-	private reposWithGap(
+	private reposWithTargets(
 		cards: HTMLElement[],
 		panel: HTMLElement,
-		section: HTMLElement,
+		targets: number[],
 		gap: number
 	): number {
-		let lastBottom = -gap;
+		// Remove all cards first, then re-append in sorted order.
+		// This avoids inconsistent intermediate DOM states when cards
+		// are reordered (appending to end while unprocessed cards remain).
+		for (const card of cards) card.remove();
 
-		for (const card of cards) {
+		let nextTop = 0;
+
+		for (let i = 0; i < cards.length; i++) {
+			const card = cards[i];
 			card.style.marginTop = '';
+			card.style.marginBottom = '0px'; // Override CSS margin-bottom to prevent collapse
 			panel.appendChild(card);
 
-			const tcId = card.dataset.tcId;
-			if (!tcId) continue;
-			const contentEl = section.querySelector(
-				`article [data-tc-id="${CSS.escape(tcId)}"]`
-			) as HTMLElement;
-			if (!contentEl) continue;
-
-			const targetTop = this.offsetTopRelativeTo(contentEl, section)
-				- this.offsetTopRelativeTo(panel, section);
-			const desiredTop = Math.max(targetTop, lastBottom + gap);
-			const currentPos = card.offsetTop;
-			if (desiredTop > currentPos) {
-				card.style.marginTop = `${desiredTop - currentPos}px`;
+			const desiredTop = Math.max(targets[i], nextTop);
+			const naturalTop = card.offsetTop;
+			const delta = desiredTop - naturalTop;
+			if (Math.abs(delta) > 1) {
+				card.style.marginTop = `${delta}px`;
 			}
-			lastBottom = card.offsetTop + card.offsetHeight;
+			const actualTop = Math.abs(delta) > 1 ? desiredTop : naturalTop;
+			nextTop = actualTop + card.offsetHeight + gap;
 		}
 
-		return lastBottom;
+		const last = cards[cards.length - 1];
+		return last.offsetTop + last.offsetHeight;
 	}
 
 	/**
@@ -2970,35 +2989,46 @@ section.${c}.${c}-has-track-changes {
 				- this.offsetTopRelativeTo(bEl, section);
 		});
 
-		// Try positioning aligned to content with normal gap
-		let lastBottom = this.reposWithGap(cards, panel, section, ANNOTATION_GAP);
+		// Compute target positions for each card (content-aligned)
+		const panelOffset = this.offsetTopRelativeTo(panel, section);
+		const targets: number[] = cards.map(card => {
+			const tcId = card.dataset.tcId;
+			if (!tcId) return 0;
+			const contentEl = section.querySelector(
+				`article [data-tc-id="${CSS.escape(tcId)}"]`
+			) as HTMLElement;
+			if (!contentEl) return 0;
+			return this.offsetTopRelativeTo(contentEl, section) - panelOffset;
+		});
+
+		const cardHeights = cards.map(c => c.offsetHeight);
+		const zeroTargets = targets.map(() => 0);
+
+		let useTargets: number[];
+
+		if (cards.length <= 3) {
+			// Rule 1: few cards — always content-aligned
+			useTargets = targets;
+		} else {
+			const tight = this.computePositions(cardHeights, zeroTargets, ANNOTATION_GAP);
+			const density = tight.lastBottom / availableHeight;
+
+			if (density > 0.6) {
+				// Rule 2: dense — tight stack
+				useTargets = zeroTargets;
+			} else {
+				// Rule 3: try content-aligned
+				const aligned = this.computePositions(cardHeights, targets, ANNOTATION_GAP);
+				useTargets = aligned.lastBottom > availableHeight ? zeroTargets : targets;
+			}
+		}
+
+		const lastBottom = this.reposWithTargets(cards, panel, useTargets, ANNOTATION_GAP);
 
 		if (lastBottom > availableHeight) {
-			// Too tall — retry with compressed gap
-			for (const card of cards) card.style.marginTop = '';
-			lastBottom = this.reposWithGap(cards, panel, section, COMPRESSED_GAP);
-
-			if (lastBottom > availableHeight) {
-				// Still overflows — make panel scrollable
-				panel.setAttribute('data-scrollable', '');
-				panel.style.overflowY = 'auto';
-				panel.style.maxHeight = `${availableHeight}px`;
-			}
-		} else if (cards.length > 1 && lastBottom < availableHeight) {
-			// Cards don't fill the page — distribute extra space between them
-			// so annotations spread to the bottom of the page.
-			// Subtract last card height so it doesn't overflow past the edge.
-			const lastCardH = cards[cards.length - 1].offsetHeight;
-			const target = availableHeight - lastCardH;
-			const cardsTopSpan = lastBottom - lastCardH; // top of last card
-			const extraSpace = Math.max(0, target - cardsTopSpan);
-			if (extraSpace > 0) {
-				const extraPerGap = extraSpace / (cards.length - 1);
-				for (let i = 1; i < cards.length; i++) {
-					const existing = parseFloat(cards[i].style.marginTop) || 0;
-					cards[i].style.marginTop = `${existing + extraPerGap}px`;
-				}
-			}
+			panel.setAttribute('data-scrollable', '');
+			panel.style.overflowY = 'auto';
+			panel.style.maxHeight = `${availableHeight}px`;
 		}
 	}
 }

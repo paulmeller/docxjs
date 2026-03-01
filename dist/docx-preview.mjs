@@ -3092,7 +3092,6 @@ const ns = {
     mathML: "http://www.w3.org/1998/Math/MathML"
 };
 const ANNOTATION_GAP = 8;
-const COMPRESSED_GAP = 2;
 class HtmlRenderer {
     constructor(htmlDocument) {
         this.htmlDocument = htmlDocument;
@@ -5284,27 +5283,37 @@ section.${c}.${c}-has-track-changes {
         }
         return y;
     }
-    reposWithGap(cards, panel, section, gap) {
-        let lastBottom = -gap;
-        for (const card of cards) {
-            card.style.marginTop = '';
-            panel.appendChild(card);
-            const tcId = card.dataset.tcId;
-            if (!tcId)
-                continue;
-            const contentEl = section.querySelector(`article [data-tc-id="${CSS.escape(tcId)}"]`);
-            if (!contentEl)
-                continue;
-            const targetTop = this.offsetTopRelativeTo(contentEl, section)
-                - this.offsetTopRelativeTo(panel, section);
-            const desiredTop = Math.max(targetTop, lastBottom + gap);
-            const currentPos = card.offsetTop;
-            if (desiredTop > currentPos) {
-                card.style.marginTop = `${desiredTop - currentPos}px`;
-            }
-            lastBottom = card.offsetTop + card.offsetHeight;
+    computePositions(cardHeights, targets, gap) {
+        let nextTop = 0;
+        const tops = [];
+        for (let i = 0; i < cardHeights.length; i++) {
+            const top = Math.max(targets[i], nextTop);
+            tops.push(top);
+            nextTop = top + cardHeights[i] + gap;
         }
-        return lastBottom;
+        const last = cardHeights.length - 1;
+        return { tops, lastBottom: tops[last] + cardHeights[last] };
+    }
+    reposWithTargets(cards, panel, targets, gap) {
+        for (const card of cards)
+            card.remove();
+        let nextTop = 0;
+        for (let i = 0; i < cards.length; i++) {
+            const card = cards[i];
+            card.style.marginTop = '';
+            card.style.marginBottom = '0px';
+            panel.appendChild(card);
+            const desiredTop = Math.max(targets[i], nextTop);
+            const naturalTop = card.offsetTop;
+            const delta = desiredTop - naturalTop;
+            if (Math.abs(delta) > 1) {
+                card.style.marginTop = `${delta}px`;
+            }
+            const actualTop = Math.abs(delta) > 1 ? desiredTop : naturalTop;
+            nextTop = actualTop + card.offsetHeight + gap;
+        }
+        const last = cards[cards.length - 1];
+        return last.offsetTop + last.offsetHeight;
     }
     findCutoffIndex(cards, availableHeight, buttonHeight) {
         const limit = availableHeight - buttonHeight;
@@ -5342,29 +5351,38 @@ section.${c}.${c}-has-track-changes {
             return this.offsetTopRelativeTo(aEl, section)
                 - this.offsetTopRelativeTo(bEl, section);
         });
-        let lastBottom = this.reposWithGap(cards, panel, section, ANNOTATION_GAP);
-        if (lastBottom > availableHeight) {
-            for (const card of cards)
-                card.style.marginTop = '';
-            lastBottom = this.reposWithGap(cards, panel, section, COMPRESSED_GAP);
-            if (lastBottom > availableHeight) {
-                panel.setAttribute('data-scrollable', '');
-                panel.style.overflowY = 'auto';
-                panel.style.maxHeight = `${availableHeight}px`;
+        const panelOffset = this.offsetTopRelativeTo(panel, section);
+        const targets = cards.map(card => {
+            const tcId = card.dataset.tcId;
+            if (!tcId)
+                return 0;
+            const contentEl = section.querySelector(`article [data-tc-id="${CSS.escape(tcId)}"]`);
+            if (!contentEl)
+                return 0;
+            return this.offsetTopRelativeTo(contentEl, section) - panelOffset;
+        });
+        const cardHeights = cards.map(c => c.offsetHeight);
+        const zeroTargets = targets.map(() => 0);
+        let useTargets;
+        if (cards.length <= 3) {
+            useTargets = targets;
+        }
+        else {
+            const tight = this.computePositions(cardHeights, zeroTargets, ANNOTATION_GAP);
+            const density = tight.lastBottom / availableHeight;
+            if (density > 0.6) {
+                useTargets = zeroTargets;
+            }
+            else {
+                const aligned = this.computePositions(cardHeights, targets, ANNOTATION_GAP);
+                useTargets = aligned.lastBottom > availableHeight ? zeroTargets : targets;
             }
         }
-        else if (cards.length > 1 && lastBottom < availableHeight) {
-            const lastCardH = cards[cards.length - 1].offsetHeight;
-            const target = availableHeight - lastCardH;
-            const cardsTopSpan = lastBottom - lastCardH;
-            const extraSpace = Math.max(0, target - cardsTopSpan);
-            if (extraSpace > 0) {
-                const extraPerGap = extraSpace / (cards.length - 1);
-                for (let i = 1; i < cards.length; i++) {
-                    const existing = parseFloat(cards[i].style.marginTop) || 0;
-                    cards[i].style.marginTop = `${existing + extraPerGap}px`;
-                }
-            }
+        const lastBottom = this.reposWithTargets(cards, panel, useTargets, ANNOTATION_GAP);
+        if (lastBottom > availableHeight) {
+            panel.setAttribute('data-scrollable', '');
+            panel.style.overflowY = 'auto';
+            panel.style.maxHeight = `${availableHeight}px`;
         }
     }
 }
