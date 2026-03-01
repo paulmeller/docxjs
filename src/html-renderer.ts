@@ -3047,9 +3047,8 @@ section.${c}.${c}-has-track-changes {
 				// Rule 2: dense — tight stack
 				useTargets = zeroTargets;
 			} else {
-				// Rule 3: try content-aligned
-				const aligned = computePositions(cardHeights, targets, ANNOTATION_GAP);
-				useTargets = aligned.lastBottom > availableHeight ? zeroTargets : targets;
+				// Rule 3: content-aligned — fitWithinBounds handles overflow
+				useTargets = targets;
 			}
 		}
 
