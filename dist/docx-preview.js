@@ -3105,11 +3105,17 @@
     }
     function fitWithinBounds(cardHeights, targets, gap, availableHeight) {
         const trial = computePositions(cardHeights, targets, gap);
-        if (trial.lastBottom > availableHeight) {
-            const shift = trial.lastBottom - availableHeight;
-            return targets.map(t => Math.max(0, t - shift));
+        if (trial.lastBottom <= availableHeight)
+            return targets;
+        const adjusted = [...trial.tops];
+        let maxBottom = availableHeight;
+        for (let i = adjusted.length - 1; i >= 0; i--) {
+            if (adjusted[i] + cardHeights[i] > maxBottom) {
+                adjusted[i] = Math.max(0, maxBottom - cardHeights[i]);
+            }
+            maxBottom = adjusted[i] - gap;
         }
-        return targets;
+        return adjusted;
     }
 
     const ns = {
@@ -5387,10 +5393,13 @@ section.${c}.${c}-has-track-changes {
             const section = panel.closest(`section.${c}`);
             if (!section)
                 return;
+            const panelOffset = this.offsetTopRelativeTo(panel, section);
+            const sectionStyle = getComputedStyle(section);
+            const sectionPadBot = parseFloat(sectionStyle.paddingBottom) || 0;
             const panelStyle = getComputedStyle(panel);
             const panelPaddingY = (parseFloat(panelStyle.paddingTop) || 0)
                 + (parseFloat(panelStyle.paddingBottom) || 0);
-            const availableHeight = section.clientHeight - panelPaddingY;
+            const availableHeight = section.clientHeight - panelOffset - sectionPadBot - panelPaddingY;
             if (!availableHeight)
                 return;
             cards.sort((a, b) => {
@@ -5401,7 +5410,6 @@ section.${c}.${c}-has-track-changes {
                 return this.offsetTopRelativeTo(aEl, section)
                     - this.offsetTopRelativeTo(bEl, section);
             });
-            const panelOffset = this.offsetTopRelativeTo(panel, section);
             const targets = cards.map(card => {
                 const tcId = card.dataset.tcId;
                 if (!tcId)
@@ -5424,12 +5432,17 @@ section.${c}.${c}-has-track-changes {
                     useTargets = zeroTargets;
                 }
                 else {
-                    const aligned = computePositions(cardHeights, targets, ANNOTATION_GAP);
-                    useTargets = aligned.lastBottom > availableHeight ? zeroTargets : targets;
+                    useTargets = targets;
                 }
             }
             useTargets = fitWithinBounds(cardHeights, useTargets, ANNOTATION_GAP, availableHeight);
-            const lastBottom = this.reposWithTargets(cards, panel, useTargets, ANNOTATION_GAP);
+            let lastBottom = this.reposWithTargets(cards, panel, useTargets, ANNOTATION_GAP);
+            if (lastBottom > availableHeight) {
+                const domHeights = cards.map(c => c.offsetHeight);
+                const domTops = cards.map(c => c.offsetTop);
+                useTargets = fitWithinBounds(domHeights, domTops, ANNOTATION_GAP, availableHeight);
+                lastBottom = this.reposWithTargets(cards, panel, useTargets, ANNOTATION_GAP);
+            }
             if (lastBottom > availableHeight) {
                 panel.setAttribute('data-scrollable', '');
                 panel.style.overflowY = 'auto';
