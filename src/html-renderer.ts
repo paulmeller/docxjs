@@ -675,7 +675,6 @@ export class HtmlRenderer {
 			const firstPage = children[0];
 			if (firstPage) {
 				firstPage.style.position = 'relative';
-				firstPage.style.overflow = 'visible';
 				firstPage.appendChild(floatingPanel);
 			}
 
@@ -1202,8 +1201,8 @@ section.${c}.${c}-has-track-changes {
 .${c}-wrapper.${c}-has-floating-panel {
     position: relative;
 }
-.${c}-wrapper.${c}-has-floating-panel > section.${c}:first-of-type {
-    position: relative;
+.${c}-wrapper.${c}-has-floating-panel > section.${c} {
+    overflow: visible;
 }
 .${c}-track-changes-floating {
     position: absolute;
@@ -1247,12 +1246,8 @@ section.${c}.${c}-has-track-changes {
     overflow-y: auto;
     scrollbar-width: thin;
     scrollbar-color: var(--docx-border-color) transparent;
-    -webkit-mask-image: linear-gradient(to bottom,
-        transparent 0px, black 20px,
-        black calc(100% - 20px), transparent 100%);
-    mask-image: linear-gradient(to bottom,
-        transparent 0px, black 20px,
-        black calc(100% - 20px), transparent 100%);
+    -webkit-mask-image: linear-gradient(to bottom, transparent 0px, black 20px);
+    mask-image: linear-gradient(to bottom, transparent 0px, black 20px);
 }
 .${c}-track-changes-floating[data-scrollable]::-webkit-scrollbar { width: 4px; }
 .${c}-track-changes-floating[data-scrollable]::-webkit-scrollbar-thumb {
@@ -2899,7 +2894,6 @@ section.${c}.${c}-has-track-changes {
 				targetPanel.innerHTML = '';
 				targetSection.appendChild(targetPanel);
 				targetSection.style.position = 'relative';
-				targetSection.style.overflow = 'visible';
 			}
 
 			if (card.parentElement !== targetPanel) {
