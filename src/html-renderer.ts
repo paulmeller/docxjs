@@ -1208,7 +1208,7 @@ section.${c}.${c}-has-track-changes {
     background: transparent;
     padding-left: 12px;
     box-sizing: border-box;
-    overflow: hidden;
+    overflow: visible;
 }
 .${c}-track-changes-floating .${c}-tc-annotation {
     position: relative;
@@ -2877,7 +2877,9 @@ section.${c}.${c}-has-track-changes {
 					break;
 				}
 			}
-			if (!targetSection) continue;
+			if (!targetSection) {
+				continue;
+			}
 
 			// Get or create floating panel on the target section
 			let targetPanel = targetSection.querySelector(

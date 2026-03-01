@@ -4089,7 +4089,7 @@ section.${c}.${c}-has-track-changes {
     background: transparent;
     padding-left: 12px;
     box-sizing: border-box;
-    overflow: hidden;
+    overflow: visible;
 }
 .${c}-track-changes-floating .${c}-tc-annotation {
     position: relative;
@@ -5310,8 +5310,9 @@ section.${c}.${c}-has-track-changes {
                     break;
                 }
             }
-            if (!targetSection)
+            if (!targetSection) {
                 continue;
+            }
             let targetPanel = targetSection.querySelector(`:scope > .${c}-track-changes-floating`);
             if (!targetPanel) {
                 const existingPanel = wrapper.querySelector(`.${c}-track-changes-floating`);
