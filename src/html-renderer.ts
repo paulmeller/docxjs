@@ -26,16 +26,12 @@ import { BaseHeaderFooterPart } from './header-footer/parts';
 import { Part } from './common/part';
 import { VmlElement } from './vml/vml';
 import { WmlComment, WmlCommentRangeStart, WmlCommentReference } from './comments/elements';
+import { ANNOTATION_GAP, COMPRESSED_GAP, EXPAND_BUTTON_HEIGHT, computePositions, fitWithinBounds } from './annotation-layout';
 
 const ns = {
 	svg: "http://www.w3.org/2000/svg",
 	mathML: "http://www.w3.org/1998/Math/MathML"
 }
-
-// Annotation overflow constants
-const ANNOTATION_GAP = 8;
-const COMPRESSED_GAP = 2;
-const EXPAND_BUTTON_HEIGHT = 32;
 
 interface CellPos {
 	col: number;
@@ -2926,24 +2922,6 @@ section.${c}.${c}-has-track-changes {
 	}
 
 	/**
-	 * Pure math — compute card top positions without touching the DOM.
-	 * Used by the density gate to trial-layout before committing.
-	 */
-	private computePositions(
-		cardHeights: number[], targets: number[], gap: number
-	): { tops: number[], lastBottom: number } {
-		let nextTop = 0;
-		const tops: number[] = [];
-		for (let i = 0; i < cardHeights.length; i++) {
-			const top = Math.max(targets[i], nextTop);
-			tops.push(top);
-			nextTop = top + cardHeights[i] + gap;
-		}
-		const last = cardHeights.length - 1;
-		return { tops, lastBottom: tops[last] + cardHeights[last] };
-	}
-
-	/**
 	 * Position cards with marginTop so each aligns with its content element
 	 * (or stacks below the previous card). Uses offsetTop/offsetHeight
 	 * (zoom-independent). Returns the bottom of the last card.
@@ -3062,7 +3040,7 @@ section.${c}.${c}-has-track-changes {
 			// Rule 1: few cards — always content-aligned
 			useTargets = targets;
 		} else {
-			const tight = this.computePositions(cardHeights, zeroTargets, ANNOTATION_GAP);
+			const tight = computePositions(cardHeights, zeroTargets, ANNOTATION_GAP);
 			const density = tight.lastBottom / availableHeight;
 
 			if (density > 0.6) {
@@ -3070,10 +3048,13 @@ section.${c}.${c}-has-track-changes {
 				useTargets = zeroTargets;
 			} else {
 				// Rule 3: try content-aligned
-				const aligned = this.computePositions(cardHeights, targets, ANNOTATION_GAP);
+				const aligned = computePositions(cardHeights, targets, ANNOTATION_GAP);
 				useTargets = aligned.lastBottom > availableHeight ? zeroTargets : targets;
 			}
 		}
+
+		// Shift targets upward if layout would overflow the section
+		useTargets = fitWithinBounds(cardHeights, useTargets, ANNOTATION_GAP, availableHeight);
 
 		const lastBottom = this.reposWithTargets(cards, panel, useTargets, ANNOTATION_GAP);
 

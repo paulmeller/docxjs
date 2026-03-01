@@ -27,14 +27,16 @@
     "karma-jasmine": "^5.0.0",
     "rollup": "^4.9.1",
     "tslib": "^2.4.0",
-    "typescript": "^5.0.3"
+    "typescript": "^5.0.3",
+    "vitest": "^4.0.18"
   },
   "scripts": {
     "build": "rollup --config rollup.config.mjs",
     "build-prod": "rollup --config rollup.config.mjs --environment BUILD:production",
     "watch": "rollup --config rollup.config.mjs --watch",
     "e2e": "karma start karma.conf.cjs --single-run",
-    "e2e-watch": "karma start karma.conf.cjs"
+    "e2e-watch": "karma start karma.conf.cjs",
+    "test": "vitest run tests/annotation-layout.spec.ts"
   },
   "files": [
     "dist"

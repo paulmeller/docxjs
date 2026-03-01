@@ -3087,11 +3087,31 @@ function lengthToPoint(length) {
     return parseFloat(length);
 }
 
+const ANNOTATION_GAP = 8;
+function computePositions(cardHeights, targets, gap) {
+    let nextTop = 0;
+    const tops = [];
+    for (let i = 0; i < cardHeights.length; i++) {
+        const top = Math.max(targets[i], nextTop);
+        tops.push(top);
+        nextTop = top + cardHeights[i] + gap;
+    }
+    const last = cardHeights.length - 1;
+    return { tops, lastBottom: tops[last] + cardHeights[last] };
+}
+function fitWithinBounds(cardHeights, targets, gap, availableHeight) {
+    const trial = computePositions(cardHeights, targets, gap);
+    if (trial.lastBottom > availableHeight) {
+        const shift = trial.lastBottom - availableHeight;
+        return targets.map(t => Math.max(0, t - shift));
+    }
+    return targets;
+}
+
 const ns = {
     svg: "http://www.w3.org/2000/svg",
     mathML: "http://www.w3.org/1998/Math/MathML"
 };
-const ANNOTATION_GAP = 8;
 class HtmlRenderer {
     constructor(htmlDocument) {
         this.htmlDocument = htmlDocument;
@@ -3553,7 +3573,6 @@ class HtmlRenderer {
             const firstPage = children[0];
             if (firstPage) {
                 firstPage.style.position = 'relative';
-                firstPage.style.overflow = 'visible';
                 firstPage.appendChild(floatingPanel);
             }
             this.later(() => this.renderFloatingAnnotations(floatingPanel, wrapper));
@@ -4053,8 +4072,8 @@ section.${c}.${c}-has-track-changes {
 .${c}-wrapper.${c}-has-floating-panel {
     position: relative;
 }
-.${c}-wrapper.${c}-has-floating-panel > section.${c}:first-of-type {
-    position: relative;
+.${c}-wrapper.${c}-has-floating-panel > section.${c} {
+    overflow: visible;
 }
 .${c}-track-changes-floating {
     position: absolute;
@@ -4098,12 +4117,8 @@ section.${c}.${c}-has-track-changes {
     overflow-y: auto;
     scrollbar-width: thin;
     scrollbar-color: var(--docx-border-color) transparent;
-    -webkit-mask-image: linear-gradient(to bottom,
-        transparent 0px, black 20px,
-        black calc(100% - 20px), transparent 100%);
-    mask-image: linear-gradient(to bottom,
-        transparent 0px, black 20px,
-        black calc(100% - 20px), transparent 100%);
+    -webkit-mask-image: linear-gradient(to bottom, transparent 0px, black 20px);
+    mask-image: linear-gradient(to bottom, transparent 0px, black 20px);
 }
 .${c}-track-changes-floating[data-scrollable]::-webkit-scrollbar { width: 4px; }
 .${c}-track-changes-floating[data-scrollable]::-webkit-scrollbar-thumb {
@@ -5300,7 +5315,6 @@ section.${c}.${c}-has-track-changes {
                 targetPanel.innerHTML = '';
                 targetSection.appendChild(targetPanel);
                 targetSection.style.position = 'relative';
-                targetSection.style.overflow = 'visible';
             }
             if (card.parentElement !== targetPanel) {
                 card.style.marginTop = '';
@@ -5322,17 +5336,6 @@ section.${c}.${c}-has-track-changes {
             cur = cur.offsetParent;
         }
         return y;
-    }
-    computePositions(cardHeights, targets, gap) {
-        let nextTop = 0;
-        const tops = [];
-        for (let i = 0; i < cardHeights.length; i++) {
-            const top = Math.max(targets[i], nextTop);
-            tops.push(top);
-            nextTop = top + cardHeights[i] + gap;
-        }
-        const last = cardHeights.length - 1;
-        return { tops, lastBottom: tops[last] + cardHeights[last] };
     }
     reposWithTargets(cards, panel, targets, gap) {
         for (const card of cards)
@@ -5411,16 +5414,17 @@ section.${c}.${c}-has-track-changes {
             useTargets = targets;
         }
         else {
-            const tight = this.computePositions(cardHeights, zeroTargets, ANNOTATION_GAP);
+            const tight = computePositions(cardHeights, zeroTargets, ANNOTATION_GAP);
             const density = tight.lastBottom / availableHeight;
             if (density > 0.6) {
                 useTargets = zeroTargets;
             }
             else {
-                const aligned = this.computePositions(cardHeights, targets, ANNOTATION_GAP);
+                const aligned = computePositions(cardHeights, targets, ANNOTATION_GAP);
                 useTargets = aligned.lastBottom > availableHeight ? zeroTargets : targets;
             }
         }
+        useTargets = fitWithinBounds(cardHeights, useTargets, ANNOTATION_GAP, availableHeight);
         const lastBottom = this.reposWithTargets(cards, panel, useTargets, ANNOTATION_GAP);
         if (lastBottom > availableHeight) {
             panel.setAttribute('data-scrollable', '');
