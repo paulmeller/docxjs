@@ -2998,13 +2998,16 @@ section.${c}.${c}-has-track-changes {
 		const section = panel.closest(`section.${c}`) as HTMLElement;
 		if (!section) return;
 
-		// Panel is position:absolute — its clientHeight grows with content.
-		// Constraint = distance from panel top to section bottom, minus panel padding.
+		// Panel is position:absolute inside the section.
+		// section.clientHeight includes page-margin padding — subtract it so
+		// cards stay within the visible content area, not the padding zone.
 		const panelOffset = this.offsetTopRelativeTo(panel, section);
+		const sectionStyle = getComputedStyle(section);
+		const sectionPadBot = parseFloat(sectionStyle.paddingBottom) || 0;
 		const panelStyle = getComputedStyle(panel);
 		const panelPaddingY = (parseFloat(panelStyle.paddingTop) || 0)
 			+ (parseFloat(panelStyle.paddingBottom) || 0);
-		const availableHeight = section.clientHeight - panelOffset - panelPaddingY;
+		const availableHeight = section.clientHeight - panelOffset - sectionPadBot - panelPaddingY;
 		if (!availableHeight) return;
 
 		// Sort cards by content element vertical position
