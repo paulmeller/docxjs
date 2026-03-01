@@ -23,16 +23,22 @@ export function computePositions(
 }
 
 /**
- * Shift all targets upward if the layout would overflow availableHeight.
- * Returns adjusted targets (clamped to 0 minimum).
+ * Pull overflowing cards up from the bottom via a backward pass.
+ * Top cards that already fit keep their content-aligned positions.
  */
 export function fitWithinBounds(
 	cardHeights: number[], targets: number[], gap: number, availableHeight: number
 ): number[] {
 	const trial = computePositions(cardHeights, targets, gap);
-	if (trial.lastBottom > availableHeight) {
-		const shift = trial.lastBottom - availableHeight;
-		return targets.map(t => Math.max(0, t - shift));
+	if (trial.lastBottom <= availableHeight) return targets;
+
+	const adjusted = [...trial.tops];
+	let maxBottom = availableHeight;
+	for (let i = adjusted.length - 1; i >= 0; i--) {
+		if (adjusted[i] + cardHeights[i] > maxBottom) {
+			adjusted[i] = Math.max(0, maxBottom - cardHeights[i]);
+		}
+		maxBottom = adjusted[i] - gap;
 	}
-	return targets;
+	return adjusted;
 }

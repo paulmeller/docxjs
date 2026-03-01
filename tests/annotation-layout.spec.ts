@@ -49,7 +49,7 @@ describe('fitWithinBounds', () => {
 		// Card 2 at 160, bottom = 200, but available = 180 → overflow by 20
 		const targets = [100, 160];
 		const result = fitWithinBounds(heights, targets, ANNOTATION_GAP, 180);
-		expect(result).toEqual([80, 140]);
+		expect(result).toEqual([92, 140]);
 	});
 
 	it('clamps to 0 when shift exceeds first target', () => {
@@ -76,7 +76,7 @@ describe('fitWithinBounds', () => {
 		// Trial: tops=[300, 400, 500], lastBottom=560
 		// avail=520 → shift=40
 		const result = fitWithinBounds(heights, targets, ANNOTATION_GAP, 520);
-		expect(result).toEqual([260, 360, 460]);
+		expect(result).toEqual([300, 392, 460]);
 	});
 
 	it('still overflows when total card height exceeds available (scrollable)', () => {
@@ -86,6 +86,6 @@ describe('fitWithinBounds', () => {
 		// avail=400 → shift=216, shifted=[0, 0, 0] (all clamped)
 		// Cards still won't fit — scrollable fallback needed
 		const result = fitWithinBounds(heights, targets, ANNOTATION_GAP, 400);
-		expect(result).toEqual([0, 0, 0]);
+		expect(result).toEqual([0, 0, 200]);
 	});
 });
