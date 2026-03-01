@@ -2999,11 +2999,12 @@ section.${c}.${c}-has-track-changes {
 		if (!section) return;
 
 		// Panel is position:absolute — its clientHeight grows with content.
-		// Use the section's height minus the panel's vertical padding as the true constraint.
+		// Constraint = distance from panel top to section bottom, minus panel padding.
+		const panelOffset = this.offsetTopRelativeTo(panel, section);
 		const panelStyle = getComputedStyle(panel);
 		const panelPaddingY = (parseFloat(panelStyle.paddingTop) || 0)
 			+ (parseFloat(panelStyle.paddingBottom) || 0);
-		const availableHeight = section.clientHeight - panelPaddingY;
+		const availableHeight = section.clientHeight - panelOffset - panelPaddingY;
 		if (!availableHeight) return;
 
 		// Sort cards by content element vertical position
@@ -3020,7 +3021,6 @@ section.${c}.${c}-has-track-changes {
 		});
 
 		// Compute target positions for each card (content-aligned)
-		const panelOffset = this.offsetTopRelativeTo(panel, section);
 		const targets: number[] = cards.map(card => {
 			const tcId = card.dataset.tcId;
 			if (!tcId) return 0;
