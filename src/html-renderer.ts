@@ -2755,7 +2755,8 @@ section.${c}.${c}-has-track-changes {
 			i++;
 		}
 
-		// After all splitting, recalculate annotation positions
+		// After all splitting, redistribute cards to correct sections, then recalc positions
+		this.redistributeFloatingCards(wrapper as HTMLElement);
 		this.recalcAllAnnotations(wrapper as HTMLElement);
 	}
 
@@ -2829,7 +2830,6 @@ section.${c}.${c}-has-track-changes {
 			newPanel.innerHTML = '';
 			newSection.appendChild(newPanel);
 			newSection.style.position = 'relative';
-			newSection.style.overflow = 'visible';
 			this.distributeAnnotationCards(floatingPanel, newPanel, newArticle);
 		}
 
@@ -2850,6 +2850,61 @@ section.${c}.${c}-has-track-changes {
 			if (newArticle.querySelector(`[data-tc-id="${CSS.escape(tcId)}"]`)) {
 				card.style.marginTop = '';
 				newPanel.appendChild(card);
+			}
+		}
+	}
+
+	/**
+	 * After page splitting, redistribute annotation cards so each card
+	 * lives in the section that actually contains its content element.
+	 * Cards from later DOCX sections (section breaks) may have been placed
+	 * on the first section's panel; this moves them to the correct one.
+	 */
+	private redistributeFloatingCards(wrapper: HTMLElement): void {
+		const c = this.className;
+		const sections = Array.from(
+			wrapper.querySelectorAll(`:scope > section.${c}`)
+		) as HTMLElement[];
+
+		// Collect all floating cards from all panels
+		const allCards: HTMLElement[] = [];
+		for (const section of sections) {
+			const panel = section.querySelector(`:scope > .${c}-track-changes-floating`);
+			if (!panel) continue;
+			allCards.push(...Array.from(panel.querySelectorAll(':scope > [data-tc-id]')) as HTMLElement[]);
+		}
+
+		for (const card of allCards) {
+			const tcId = card.dataset.tcId;
+			if (!tcId) continue;
+
+			// Find which section contains this card's content element
+			let targetSection: HTMLElement | null = null;
+			for (const section of sections) {
+				if (section.querySelector(`article [data-tc-id="${CSS.escape(tcId)}"]`)) {
+					targetSection = section;
+					break;
+				}
+			}
+			if (!targetSection) continue;
+
+			// Get or create floating panel on the target section
+			let targetPanel = targetSection.querySelector(
+				`:scope > .${c}-track-changes-floating`
+			) as HTMLElement;
+			if (!targetPanel) {
+				const existingPanel = wrapper.querySelector(`.${c}-track-changes-floating`) as HTMLElement;
+				if (!existingPanel) continue;
+				targetPanel = existingPanel.cloneNode(false) as HTMLElement;
+				targetPanel.innerHTML = '';
+				targetSection.appendChild(targetPanel);
+				targetSection.style.position = 'relative';
+				targetSection.style.overflow = 'visible';
+			}
+
+			if (card.parentElement !== targetPanel) {
+				card.style.marginTop = '';
+				targetPanel.appendChild(card);
 			}
 		}
 	}

@@ -5190,6 +5190,7 @@ section.${c}.${c}-has-track-changes {
             }
             i++;
         }
+        this.redistributeFloatingCards(wrapper);
         this.recalcAllAnnotations(wrapper);
     }
     splitSectionIfNeeded(section, wrapper) {
@@ -5250,7 +5251,6 @@ section.${c}.${c}-has-track-changes {
             newPanel.innerHTML = '';
             newSection.appendChild(newPanel);
             newSection.style.position = 'relative';
-            newSection.style.overflow = 'visible';
             this.distributeAnnotationCards(floatingPanel, newPanel, newArticle);
         }
         wrapper.insertBefore(newSection, section.nextSibling);
@@ -5265,6 +5265,46 @@ section.${c}.${c}-has-track-changes {
             if (newArticle.querySelector(`[data-tc-id="${CSS.escape(tcId)}"]`)) {
                 card.style.marginTop = '';
                 newPanel.appendChild(card);
+            }
+        }
+    }
+    redistributeFloatingCards(wrapper) {
+        const c = this.className;
+        const sections = Array.from(wrapper.querySelectorAll(`:scope > section.${c}`));
+        const allCards = [];
+        for (const section of sections) {
+            const panel = section.querySelector(`:scope > .${c}-track-changes-floating`);
+            if (!panel)
+                continue;
+            allCards.push(...Array.from(panel.querySelectorAll(':scope > [data-tc-id]')));
+        }
+        for (const card of allCards) {
+            const tcId = card.dataset.tcId;
+            if (!tcId)
+                continue;
+            let targetSection = null;
+            for (const section of sections) {
+                if (section.querySelector(`article [data-tc-id="${CSS.escape(tcId)}"]`)) {
+                    targetSection = section;
+                    break;
+                }
+            }
+            if (!targetSection)
+                continue;
+            let targetPanel = targetSection.querySelector(`:scope > .${c}-track-changes-floating`);
+            if (!targetPanel) {
+                const existingPanel = wrapper.querySelector(`.${c}-track-changes-floating`);
+                if (!existingPanel)
+                    continue;
+                targetPanel = existingPanel.cloneNode(false);
+                targetPanel.innerHTML = '';
+                targetSection.appendChild(targetPanel);
+                targetSection.style.position = 'relative';
+                targetSection.style.overflow = 'visible';
+            }
+            if (card.parentElement !== targetPanel) {
+                card.style.marginTop = '';
+                targetPanel.appendChild(card);
             }
         }
     }
