@@ -1,8 +1,10 @@
 import { WordDocument } from './word-document';
 import { DocumentParser } from './document-parser';
 import { HtmlRenderer } from './html-renderer';
+import { DomType, OpenXmlElement, WmlTrackChange } from './document/dom';
 
 export type TrackChangesMode = 'inline' | 'margin' | 'floating';
+export type TrackChangeDecision = 'accept' | 'reject' | 'pending';
 
 export interface Options {
     inWrapper: boolean;
@@ -26,6 +28,8 @@ export interface Options {
     renderAltChunks: boolean;
     trackChangesMode: TrackChangesMode;
     trackChangesMarginWidth: string;
+    trackChangeDecisions: Record<string, TrackChangeDecision>;
+    onTrackChangeDecision?: (id: string, decision: 'accept' | 'reject') => void;
     commentsMode: TrackChangesMode;
 }
 
@@ -51,6 +55,7 @@ export const defaultOptions: Options = {
     renderAltChunks: true,
     trackChangesMode: 'inline',
     trackChangesMarginWidth: '220px',
+    trackChangeDecisions: {},
     commentsMode: 'inline'
 }
 
@@ -69,4 +74,42 @@ export async function renderAsync(data: Blob | any, bodyContainer: HTMLElement, 
 	const doc = await parseAsync(data, userOptions);
 	await renderDocument(doc, bodyContainer, styleContainer, userOptions);
     return doc;
+}
+
+function collectTrackChangeIds(elem: OpenXmlElement, ids: Set<string>): void {
+    const trackChangeTypes = [DomType.Inserted, DomType.Deleted, DomType.MoveFrom, DomType.MoveTo, DomType.FormatChange];
+    if (trackChangeTypes.includes(elem.type)) {
+        const tc = elem as WmlTrackChange;
+        if (tc.id) ids.add(tc.id);
+    }
+    if (elem.children) {
+        for (const child of elem.children) {
+            collectTrackChangeIds(child, ids);
+        }
+    }
+}
+
+export function getTrackChangeIds(document: any): string[] {
+    const ids = new Set<string>();
+    const doc = document as WordDocument;
+    if (doc?.documentPart?.body) {
+        collectTrackChangeIds(doc.documentPart.body, ids);
+    }
+    return Array.from(ids);
+}
+
+export function acceptAllChanges(document: any): Record<string, TrackChangeDecision> {
+    const decisions: Record<string, TrackChangeDecision> = {};
+    for (const id of getTrackChangeIds(document)) {
+        decisions[id] = 'accept';
+    }
+    return decisions;
+}
+
+export function rejectAllChanges(document: any): Record<string, TrackChangeDecision> {
+    const decisions: Record<string, TrackChangeDecision> = {};
+    for (const id of getTrackChangeIds(document)) {
+        decisions[id] = 'reject';
+    }
+    return decisions;
 }

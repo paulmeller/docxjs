@@ -168,6 +168,10 @@
             <option value="floating">Floating</option>
         </select>
 
+        <button id="acceptAllBtn" class="px-3 py-2 bg-green-600 hover:bg-green-700 text-white rounded-lg font-medium text-xs transition-colors focus-ring disabled:opacity-50 disabled:cursor-not-allowed" disabled>Accept All</button>
+        <button id="rejectAllBtn" class="px-3 py-2 bg-red-600 hover:bg-red-700 text-white rounded-lg font-medium text-xs transition-colors focus-ring disabled:opacity-50 disabled:cursor-not-allowed" disabled>Reject All</button>
+        <button id="resetDecisionsBtn" class="px-3 py-2 bg-gray-500 hover:bg-gray-600 text-white rounded-lg font-medium text-xs transition-colors focus-ring disabled:opacity-50 disabled:cursor-not-allowed hidden" disabled>Reset</button>
+
         <div class="w-px h-6 bg-gray-300 dark:bg-gray-700"></div>
 
         <!-- Page Breaks toggle -->
@@ -283,14 +287,20 @@
 
         // Document rendering
         let currentDocument = null;
+        let parsedDocument = null;
         const docxOptions = Object.assign(docx.defaultOptions, {
             debug: true,
             experimental: true,
             hideWrapperOnPrint: true,
             renderChanges: false,
             trackChangesMode: 'inline',
+            trackChangeDecisions: {},
             breakPages: true,
-            ignoreLastRenderedPageBreak: false  // Show page breaks from Word's layout
+            ignoreLastRenderedPageBreak: false,  // Show page breaks from Word's layout
+            onTrackChangeDecision: function(id, decision) {
+                docxOptions.trackChangeDecisions[id] = decision;
+                renderDocx(currentDocument);
+            }
         });
 
         const container = document.querySelector("#document-container");
@@ -301,6 +311,18 @@
         const commentsToggle = document.querySelector("#commentsToggle");
         const commentsModeSelect = document.querySelector("#commentsMode");
         const pageBreaksToggle = document.querySelector("#pageBreaksToggle");
+        const acceptAllBtn = document.querySelector("#acceptAllBtn");
+        const rejectAllBtn = document.querySelector("#rejectAllBtn");
+        const resetDecisionsBtn = document.querySelector("#resetDecisionsBtn");
+
+        function updateTrackChangeButtons() {
+            const enabled = trackChangesToggle.checked;
+            acceptAllBtn.disabled = !enabled;
+            rejectAllBtn.disabled = !enabled;
+            const hasDecisions = Object.keys(docxOptions.trackChangeDecisions).length > 0;
+            resetDecisionsBtn.classList.toggle('hidden', !hasDecisions || !enabled);
+            resetDecisionsBtn.disabled = !enabled;
+        }
 
         async function renderDocx(file) {
             currentDocument = file;
@@ -312,12 +334,15 @@
             let docxBlob = preprocessTiff(currentDocument);
             // render document
             let res = await docx.renderAsync(docxBlob, container, null, docxOptions)
+            parsedDocument = res;
             // optional - render thumbnails
             renderThumbnails(container, document.querySelector("#thumbnails-container"));
+            updateTrackChangeButtons();
             console.log(res);
         }
 
         fileInput.addEventListener("change", ev => {
+            docxOptions.trackChangeDecisions = {};
             renderDocx(fileInput.files[0]);
             testDocuments.selectedIndex = 0;
         });
@@ -327,11 +352,31 @@
         trackChangesToggle.addEventListener("change", ev => {
             docxOptions.renderChanges = trackChangesToggle.checked;
             trackChangesModeSelect.disabled = !trackChangesToggle.checked;
+            updateTrackChangeButtons();
             renderDocx(currentDocument);
         });
 
         trackChangesModeSelect.addEventListener("change", ev => {
             docxOptions.trackChangesMode = trackChangesModeSelect.value;
+            renderDocx(currentDocument);
+        });
+
+        acceptAllBtn.addEventListener("click", () => {
+            if (parsedDocument) {
+                docxOptions.trackChangeDecisions = docx.acceptAllChanges(parsedDocument);
+                renderDocx(currentDocument);
+            }
+        });
+
+        rejectAllBtn.addEventListener("click", () => {
+            if (parsedDocument) {
+                docxOptions.trackChangeDecisions = docx.rejectAllChanges(parsedDocument);
+                renderDocx(currentDocument);
+            }
+        });
+
+        resetDecisionsBtn.addEventListener("click", () => {
+            docxOptions.trackChangeDecisions = {};
             renderDocx(currentDocument);
         });
 
@@ -410,6 +455,7 @@
 
         async function tryLoadTest(testName) {
             if (testName) {
+                docxOptions.trackChangeDecisions = {};
                 let resp = await fetch(`tests/render-test/${testName}/document.docx`);
                 renderDocx(await resp.blob());
                 fileInput.value = "";
