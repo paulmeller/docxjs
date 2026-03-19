@@ -163,6 +163,12 @@
                 <button id="resetDecisionsBtn" class="inline-flex items-center h-7 px-2 rounded-md border border-zinc-200 dark:border-zinc-700 text-zinc-600 dark:text-zinc-400 text-[11px] font-medium hover:bg-zinc-50 dark:hover:bg-zinc-800 disabled:opacity-40 disabled:cursor-not-allowed hidden transition-colors" disabled>Reset</button>
             </div>
 
+            <!-- Dark mode toggle -->
+            <button id="darkModeToggle" class="inline-flex items-center justify-center h-8 w-8 rounded-md hover:bg-zinc-100 dark:hover:bg-zinc-800 transition-colors focus-ring" title="Toggle dark mode">
+                <svg class="w-4 h-4 hidden dark:block" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><circle cx="12" cy="12" r="4"/><path d="M12 2v2m0 16v2M4.93 4.93l1.41 1.41m11.32 11.32 1.41 1.41M2 12h2m16 0h2M6.34 17.66l-1.41 1.41M19.07 4.93l-1.41 1.41"/></svg>
+                <svg class="w-4 h-4 block dark:hidden" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M12 3a6 6 0 0 0 9 9 9 9 0 1 1-9-9Z"/></svg>
+            </button>
+
             <!-- Right: settings -->
             <div id="optionsDropdownContainer">
                 <button id="optionsButton" class="inline-flex items-center justify-center h-8 w-8 rounded-md hover:bg-zinc-100 dark:hover:bg-zinc-800 transition-colors focus-ring" title="Settings">
@@ -188,18 +194,6 @@
             </button>
         </div>
         <div class="flex-1 overflow-y-auto scrollbar-thin">
-
-            <!-- Appearance -->
-            <div class="px-5 py-4 border-b border-zinc-100 dark:border-zinc-800/50">
-                <h3 class="text-[11px] font-semibold uppercase tracking-wider text-zinc-400 dark:text-zinc-500 mb-3">Appearance</h3>
-                <label class="flex items-center justify-between cursor-pointer select-none">
-                    <span class="text-sm text-zinc-700 dark:text-zinc-300">Dark mode</span>
-                    <div class="relative">
-                        <input type="checkbox" id="darkModeToggle" class="sr-only peer">
-                        <div class="toggle-track w-9 h-5 bg-zinc-200 dark:bg-zinc-700 rounded-full"></div>
-                    </div>
-                </label>
-            </div>
 
             <!-- Display -->
             <div class="px-5 py-4 border-b border-zinc-100 dark:border-zinc-800/50">
@@ -278,16 +272,14 @@
         // Dark mode initialization
         const darkModeToggle = document.getElementById('darkModeToggle');
 
-        // Init from localStorage or system preference
         if (localStorage.getItem('darkMode') === 'true' ||
             (!localStorage.getItem('darkMode') && window.matchMedia('(prefers-color-scheme: dark)').matches)) {
             document.documentElement.classList.add('dark');
-            darkModeToggle.checked = true;
         }
 
-        darkModeToggle.addEventListener('change', () => {
-            document.documentElement.classList.toggle('dark', darkModeToggle.checked);
-            localStorage.setItem('darkMode', darkModeToggle.checked);
+        darkModeToggle.addEventListener('click', () => {
+            document.documentElement.classList.toggle('dark');
+            localStorage.setItem('darkMode', document.documentElement.classList.contains('dark'));
         });
 
         // Settings drawer
