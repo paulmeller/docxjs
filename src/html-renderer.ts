@@ -26,7 +26,7 @@ import { BaseHeaderFooterPart } from './header-footer/parts';
 import { Part } from './common/part';
 import { VmlElement } from './vml/vml';
 import { WmlComment, WmlCommentRangeStart, WmlCommentReference } from './comments/elements';
-import { ANNOTATION_GAP, COMPRESSED_GAP, EXPAND_BUTTON_HEIGHT, computePositions, fitWithinBounds } from './annotation-layout';
+import { ANNOTATION_GAP, fitWithinBounds } from './annotation-layout';
 
 const ns = {
 	svg: "http://www.w3.org/2000/svg",
@@ -2961,28 +2961,10 @@ section.${c}.${c}-has-track-changes {
 		return last.offsetTop + last.offsetHeight;
 	}
 
-	/**
-	 * Find the index of the first card whose bottom exceeds available space
-	 * (reserving room for the expand button). Always returns at least 1.
-	 */
-	private findCutoffIndex(
-		cards: HTMLElement[],
-		availableHeight: number,
-		buttonHeight: number
-	): number {
-		const limit = availableHeight - buttonHeight;
-		for (let i = 0; i < cards.length; i++) {
-			const bottom = cards[i].offsetTop + cards[i].offsetHeight;
-			if (bottom > limit && i > 0) return i;
-		}
-		return cards.length;
-	}
-
 	private recalcPanelPositions(panel: HTMLElement): void {
 		const c = this.className;
 
 		// Clean up previous state
-		panel.removeAttribute('data-overflow');
 		panel.removeAttribute('data-scrollable');
 		panel.style.overflowY = '';
 		panel.style.maxHeight = '';
@@ -3037,25 +3019,7 @@ section.${c}.${c}-has-track-changes {
 		});
 
 		const cardHeights = cards.map(c => c.offsetHeight);
-		const zeroTargets = targets.map(() => 0);
-
-		let useTargets: number[];
-
-		if (cards.length <= 3) {
-			// Rule 1: few cards — always content-aligned
-			useTargets = targets;
-		} else {
-			const tight = computePositions(cardHeights, zeroTargets, ANNOTATION_GAP);
-			const density = tight.lastBottom / availableHeight;
-
-			if (density > 0.6) {
-				// Rule 2: dense — tight stack
-				useTargets = zeroTargets;
-			} else {
-				// Rule 3: content-aligned — fitWithinBounds handles overflow
-				useTargets = targets;
-			}
-		}
+		let useTargets = targets;
 
 		// Shift targets upward if layout would overflow the section
 		useTargets = fitWithinBounds(cardHeights, useTargets, ANNOTATION_GAP, availableHeight);

@@ -5365,18 +5365,8 @@ section.${c}.${c}-has-track-changes {
         const last = cards[cards.length - 1];
         return last.offsetTop + last.offsetHeight;
     }
-    findCutoffIndex(cards, availableHeight, buttonHeight) {
-        const limit = availableHeight - buttonHeight;
-        for (let i = 0; i < cards.length; i++) {
-            const bottom = cards[i].offsetTop + cards[i].offsetHeight;
-            if (bottom > limit && i > 0)
-                return i;
-        }
-        return cards.length;
-    }
     recalcPanelPositions(panel) {
         const c = this.className;
-        panel.removeAttribute('data-overflow');
         panel.removeAttribute('data-scrollable');
         panel.style.overflowY = '';
         panel.style.maxHeight = '';
@@ -5417,21 +5407,7 @@ section.${c}.${c}-has-track-changes {
             return this.offsetTopRelativeTo(contentEl, section) - panelOffset;
         });
         const cardHeights = cards.map(c => c.offsetHeight);
-        const zeroTargets = targets.map(() => 0);
-        let useTargets;
-        if (cards.length <= 3) {
-            useTargets = targets;
-        }
-        else {
-            const tight = computePositions(cardHeights, zeroTargets, ANNOTATION_GAP);
-            const density = tight.lastBottom / availableHeight;
-            if (density > 0.6) {
-                useTargets = zeroTargets;
-            }
-            else {
-                useTargets = targets;
-            }
-        }
+        let useTargets = targets;
         useTargets = fitWithinBounds(cardHeights, useTargets, ANNOTATION_GAP, availableHeight);
         let lastBottom = this.reposWithTargets(cards, panel, useTargets, ANNOTATION_GAP);
         if (lastBottom > availableHeight) {
