@@ -30,6 +30,7 @@ export interface Options {
     trackChangesMarginWidth: string;
     trackChangeDecisions: Record<string, TrackChangeDecision>;
     onTrackChangeDecision?: (id: string, decision: 'accept' | 'reject') => void;
+    showTrackChangeButtons: boolean;
     commentsMode: TrackChangesMode;
 }
 
@@ -56,6 +57,7 @@ export const defaultOptions: Options = {
     trackChangesMode: 'inline',
     trackChangesMarginWidth: '220px',
     trackChangeDecisions: {},
+    showTrackChangeButtons: true,
     commentsMode: 'inline'
 }
 

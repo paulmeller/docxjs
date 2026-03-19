@@ -3893,6 +3893,7 @@ section.${c}.${c}-has-track-changes {
     font-style: normal !important;
     font-size: 11px !important;
     line-height: 1.4 !important;
+    color: var(--docx-text-primary) !important;
 }
 .${c}-tc-popover {
     opacity: 0;
@@ -3940,14 +3941,14 @@ section.${c}.${c}-has-track-changes {
     font-family: inherit;
     font-size: 11px;
     font-weight: 600;
-    color: var(--docx-text-primary);
+    color: var(--docx-text-primary) !important;
     margin-bottom: 2px;
 }
 .${c}-tc-popover-date {
     font-family: inherit;
     font-size: 10px;
     font-weight: 400;
-    color: var(--docx-text-secondary);
+    color: var(--docx-text-secondary) !important;
     display: block;
     margin-bottom: 4px;
 }
@@ -3955,7 +3956,7 @@ section.${c}.${c}-has-track-changes {
     font-family: inherit;
     font-size: 11px;
     font-weight: 400;
-    color: var(--docx-text-secondary);
+    color: var(--docx-text-secondary) !important;
 }
 .${c}-tc-popover-type {
     font-family: inherit;
@@ -3976,6 +3977,7 @@ section.${c}.${c}-has-track-changes {
     font-style: normal !important;
     font-size: 11px !important;
     line-height: 1.4 !important;
+    color: var(--docx-text-primary) !important;
 }
 .${c}-tc-annotation {
     background: var(--docx-bg-primary);
@@ -4029,14 +4031,14 @@ section.${c}.${c}-has-track-changes {
     font-family: inherit;
     font-size: 11px !important;
     font-weight: 600;
-    color: var(--docx-text-primary);
+    color: var(--docx-text-primary) !important;
     white-space: nowrap;
 }
 .${c}-tc-annotation-date {
     font-family: inherit;
     font-size: 10px !important;
     font-weight: 400;
-    color: var(--docx-text-muted);
+    color: var(--docx-text-muted) !important;
     white-space: nowrap;
 }
 
@@ -4045,7 +4047,7 @@ section.${c}.${c}-has-track-changes {
     font-family: inherit;
     font-size: 11px;
     font-weight: 400;
-    color: var(--docx-text-secondary);
+    color: var(--docx-text-secondary) !important;
     line-height: 1.4;
     display: -webkit-box;
     -webkit-line-clamp: 3;
@@ -4700,7 +4702,7 @@ section.${c}.${c}-has-track-changes {
             const previewText = this.extractPreviewText(elem);
             content.appendChild(this.htmlDocument.createTextNode(previewText));
             popover.appendChild(content);
-            if (this.options.onTrackChangeDecision) {
+            if (this.options.onTrackChangeDecision && this.options.showTrackChangeButtons) {
                 const actions = this.createElement('div', {
                     className: `${this.className}-tc-popover-actions`
                 });
@@ -4903,7 +4905,7 @@ section.${c}.${c}-has-track-changes {
                 content.appendChild(this.htmlDocument.createTextNode(annotation.previewText));
             }
             body.appendChild(content);
-            if (this.options.onTrackChangeDecision && annotation.changeType !== 'comment') {
+            if (this.options.onTrackChangeDecision && this.options.showTrackChangeButtons && annotation.changeType !== 'comment') {
                 const actions = this.createElement("div", {
                     className: `${this.className}-tc-annotation-actions`
                 });
@@ -5594,6 +5596,7 @@ section.${c}.${c}-has-track-changes {
         trackChangesMode: 'inline',
         trackChangesMarginWidth: '220px',
         trackChangeDecisions: {},
+        showTrackChangeButtons: true,
         commentsMode: 'inline'
     };
     function parseAsync(data, userOptions) {
