@@ -829,6 +829,15 @@ export class HtmlRenderer {
 		}
 		var styleText = `${designSystem}${wrapperStyle}
 .${c} { color: var(--docx-text-primary, black); hyphens: auto; text-underline-position: from-font; }
+:root.dark .${c} span, :root.dark .${c} p,
+.dark .${c}-wrapper .${c} span, .dark .${c}-wrapper .${c} p,
+.${c}-wrapper.dark .${c} span, .${c}-wrapper.dark .${c} p { color: var(--docx-text-primary) !important; }
+:root.dark .${c} table td, :root.dark .${c} table th,
+.dark .${c}-wrapper .${c} table td, .dark .${c}-wrapper .${c} table th,
+.${c}-wrapper.dark .${c} table td, .${c}-wrapper.dark .${c} table th {
+    border-color: var(--docx-border-color) !important;
+    background-color: var(--docx-bg-primary) !important;
+}
 section.${c} { box-sizing: border-box; display: flex; flex-flow: column nowrap; position: relative; overflow: hidden; }
 section.${c}>article { margin-bottom: auto; z-index: 1; }
 section.${c}>footer { z-index: 1; }
