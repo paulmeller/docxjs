@@ -1008,6 +1008,7 @@ section.${c}.${c}-has-track-changes {
     font-style: normal !important;
     font-size: 11px !important;
     line-height: 1.4 !important;
+    color: var(--docx-text-primary) !important;
 }
 .${c}-tc-popover {
     opacity: 0;
@@ -1055,14 +1056,14 @@ section.${c}.${c}-has-track-changes {
     font-family: inherit;
     font-size: 11px;
     font-weight: 600;
-    color: var(--docx-text-primary);
+    color: var(--docx-text-primary) !important;
     margin-bottom: 2px;
 }
 .${c}-tc-popover-date {
     font-family: inherit;
     font-size: 10px;
     font-weight: 400;
-    color: var(--docx-text-secondary);
+    color: var(--docx-text-secondary) !important;
     display: block;
     margin-bottom: 4px;
 }
@@ -1070,7 +1071,7 @@ section.${c}.${c}-has-track-changes {
     font-family: inherit;
     font-size: 11px;
     font-weight: 400;
-    color: var(--docx-text-secondary);
+    color: var(--docx-text-secondary) !important;
 }
 .${c}-tc-popover-type {
     font-family: inherit;
@@ -1091,6 +1092,7 @@ section.${c}.${c}-has-track-changes {
     font-style: normal !important;
     font-size: 11px !important;
     line-height: 1.4 !important;
+    color: var(--docx-text-primary) !important;
 }
 .${c}-tc-annotation {
     background: var(--docx-bg-primary);
@@ -1144,14 +1146,14 @@ section.${c}.${c}-has-track-changes {
     font-family: inherit;
     font-size: 11px !important;
     font-weight: 600;
-    color: var(--docx-text-primary);
+    color: var(--docx-text-primary) !important;
     white-space: nowrap;
 }
 .${c}-tc-annotation-date {
     font-family: inherit;
     font-size: 10px !important;
     font-weight: 400;
-    color: var(--docx-text-muted);
+    color: var(--docx-text-muted) !important;
     white-space: nowrap;
 }
 
@@ -1160,7 +1162,7 @@ section.${c}.${c}-has-track-changes {
     font-family: inherit;
     font-size: 11px;
     font-weight: 400;
-    color: var(--docx-text-secondary);
+    color: var(--docx-text-secondary) !important;
     line-height: 1.4;
     display: -webkit-box;
     -webkit-line-clamp: 3;
@@ -1249,6 +1251,45 @@ section.${c}.${c}-has-track-changes {
 .${c}-track-changes-floating[data-scrollable]::-webkit-scrollbar-thumb {
     background: var(--docx-border-color);
     border-radius: 2px;
+}
+
+/* Accept / Reject buttons */
+.${c}-tc-popover-actions,
+.${c}-tc-annotation-actions {
+    display: flex;
+    gap: 6px;
+    margin-top: 6px;
+}
+.${c}-tc-btn {
+    padding: 2px 10px;
+    border: 1px solid var(--docx-border-color);
+    border-radius: 4px;
+    cursor: pointer;
+    font-size: 11px !important;
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif !important;
+    line-height: 1.4 !important;
+    background: var(--docx-bg-primary);
+    color: var(--docx-text-primary);
+    transition: background 0.15s, border-color 0.15s;
+}
+.${c}-tc-btn:hover {
+    background: var(--docx-bg-secondary);
+}
+.${c}-tc-btn-accept {
+    color: var(--docx-color-inserted);
+    border-color: var(--docx-color-inserted);
+}
+.${c}-tc-btn-accept:hover {
+    background: var(--docx-color-inserted);
+    color: white;
+}
+.${c}-tc-btn-reject {
+    color: var(--docx-color-deleted);
+    border-color: var(--docx-color-deleted);
+}
+.${c}-tc-btn-reject:hover {
+    background: var(--docx-color-deleted);
+    color: white;
 }
 `;
 		}
@@ -1647,6 +1688,8 @@ section.${c}.${c}-has-track-changes {
 	}
 
 	registerFormatChange(formatChange: WmlTrackChange, element: HTMLElement): void {
+		const decision = this.getTrackChangeDecision(formatChange.id);
+		if (decision === 'accept' || decision === 'reject') return;
 		if (this.options.trackChangesMode !== 'margin' && this.options.trackChangesMode !== 'floating') return;
 
 		element.classList.add(`${this.className}-tc-content`, `${this.className}-tc-formatChange`);
@@ -1881,6 +1924,9 @@ section.${c}.${c}-has-track-changes {
 	}
 
 	renderDeletedText(elem: WmlText) {
+		// When renderChanges is on (and no accept decision resolved this away),
+		// show the deleted text so it's visible in the track change display.
+		// When renderChanges is off, deleted text is hidden (accept-all behavior).
 		return this.options.renderChanges ? this.renderText(elem) : null;
 	}
 
@@ -1892,9 +1938,18 @@ section.${c}.${c}-has-track-changes {
 		return null;
 	}
 
+	getTrackChangeDecision(id: string): string | undefined {
+		return this.options.trackChangeDecisions?.[id];
+	}
+
 	renderInserted(elem: WmlTrackChange): Node | Node[] {
-		if (!this.options.renderChanges) {
+		const decision = this.getTrackChangeDecision(elem.id);
+
+		if (decision === 'accept' || !this.options.renderChanges) {
 			return this.renderElements(elem.children);
+		}
+		if (decision === 'reject') {
+			return null;
 		}
 
 		if (this.options.trackChangesMode === 'margin' || this.options.trackChangesMode === 'floating') {
@@ -1905,8 +1960,13 @@ section.${c}.${c}-has-track-changes {
 	}
 
 	renderDeleted(elem: WmlTrackChange): Node | Node[] {
-		if (!this.options.renderChanges) {
+		const decision = this.getTrackChangeDecision(elem.id);
+
+		if (decision === 'accept' || !this.options.renderChanges) {
 			return null;
+		}
+		if (decision === 'reject') {
+			return this.renderElements(elem.children);
 		}
 
 		if (this.options.trackChangesMode === 'margin' || this.options.trackChangesMode === 'floating') {
@@ -1917,8 +1977,13 @@ section.${c}.${c}-has-track-changes {
 	}
 
 	renderMoveFrom(elem: WmlTrackChange): Node | Node[] {
-		if (!this.options.renderChanges) {
+		const decision = this.getTrackChangeDecision(elem.id);
+
+		if (decision === 'accept' || !this.options.renderChanges) {
 			return null;
+		}
+		if (decision === 'reject') {
+			return this.renderElements(elem.children);
 		}
 
 		if (this.options.trackChangesMode === 'margin' || this.options.trackChangesMode === 'floating') {
@@ -1929,8 +1994,13 @@ section.${c}.${c}-has-track-changes {
 	}
 
 	renderMoveTo(elem: WmlTrackChange): Node | Node[] {
-		if (!this.options.renderChanges) {
+		const decision = this.getTrackChangeDecision(elem.id);
+
+		if (decision === 'accept' || !this.options.renderChanges) {
 			return this.renderElements(elem.children);
+		}
+		if (decision === 'reject') {
+			return null;
 		}
 
 		if (this.options.trackChangesMode === 'margin' || this.options.trackChangesMode === 'floating') {
@@ -2004,6 +2074,34 @@ section.${c}.${c}-has-track-changes {
 		content.appendChild(this.htmlDocument.createTextNode(previewText));
 
 		popover.appendChild(content);
+
+		// Accept / Reject buttons in popover
+		if (this.options.onTrackChangeDecision && this.options.showTrackChangeButtons) {
+			const actions = this.createElement('div', {
+				className: `${this.className}-tc-popover-actions`
+			});
+
+			const acceptBtn = this.createElement('button', {
+				className: `${this.className}-tc-btn ${this.className}-tc-btn-accept`
+			}, ['Accept']);
+			acceptBtn.addEventListener('click', (e) => {
+				e.stopPropagation();
+				this.options.onTrackChangeDecision(elem.id, 'accept');
+			});
+			actions.appendChild(acceptBtn);
+
+			const rejectBtn = this.createElement('button', {
+				className: `${this.className}-tc-btn ${this.className}-tc-btn-reject`
+			}, ['Reject']);
+			rejectBtn.addEventListener('click', (e) => {
+				e.stopPropagation();
+				this.options.onTrackChangeDecision(elem.id, 'reject');
+			});
+			actions.appendChild(rejectBtn);
+
+			popover.appendChild(actions);
+		}
+
 		wrapper.appendChild(popover);
 
 		return wrapper;
@@ -2231,6 +2329,36 @@ section.${c}.${c}-has-track-changes {
 		}
 
 		body.appendChild(content);
+
+		// Accept / Reject buttons
+		if (this.options.onTrackChangeDecision && this.options.showTrackChangeButtons && annotation.changeType !== 'comment') {
+			const actions = this.createElement("div", {
+				className: `${this.className}-tc-annotation-actions`
+			});
+
+			const acceptBtn = this.createElement("button", {
+				className: `${this.className}-tc-btn ${this.className}-tc-btn-accept`
+			}, ['Accept']);
+			acceptBtn.setAttribute('title', 'Accept this change');
+			acceptBtn.addEventListener('click', (e) => {
+				e.stopPropagation();
+				this.options.onTrackChangeDecision(annotation.id, 'accept');
+			});
+			actions.appendChild(acceptBtn);
+
+			const rejectBtn = this.createElement("button", {
+				className: `${this.className}-tc-btn ${this.className}-tc-btn-reject`
+			}, ['Reject']);
+			rejectBtn.setAttribute('title', 'Reject this change');
+			rejectBtn.addEventListener('click', (e) => {
+				e.stopPropagation();
+				this.options.onTrackChangeDecision(annotation.id, 'reject');
+			});
+			actions.appendChild(rejectBtn);
+
+			body.appendChild(actions);
+		}
+
 		row.appendChild(body);
 		el.appendChild(row);
 
