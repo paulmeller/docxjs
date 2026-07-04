@@ -667,6 +667,10 @@ export class HtmlRenderer {
 			floatingPanel.style.width = this.options.trackChangesMarginWidth;
 			this.floatingPanelElement = floatingPanel;
 
+			// the panel is absolutely positioned off the page's right edge, so flex
+			// centering ignores it — reserve its width to center the full ensemble
+			wrapper.style.paddingRight = `calc(${this.options.trackChangesMarginWidth} + 16px)`;
+
 			// Append to first page section so left:100% positions it next to the page
 			const firstPage = children[0];
 			if (firstPage) {
@@ -682,9 +686,11 @@ export class HtmlRenderer {
 	}
 
 	renderFloatingAnnotations(floatingPanel: HTMLElement, wrapper: HTMLElement): void {
-		const annotations = Object.values(this.floatingTrackChangeMap)
-			.map(entry => entry.annotation)
-			.filter(a => a.contentElement);
+		const annotations = this.mergeReplacePairs(
+			Object.values(this.floatingTrackChangeMap)
+				.map(entry => entry.annotation)
+				.filter(a => a.contentElement)
+		);
 
 		if (annotations.length === 0) return;
 
@@ -692,6 +698,8 @@ export class HtmlRenderer {
 		const firstPage = floatingPanel.parentElement;
 		if (!firstPage) return;
 		const pageRect = firstPage.getBoundingClientRect();
+		// rect deltas are visual (zoomed) px; offsetTop/marginTop are layout px
+		const zoom = this.effectiveZoom(firstPage);
 
 		// Sort by vertical position of content relative to page
 		const sortedAnnotations = annotations.sort((a, b) => {
@@ -710,7 +718,7 @@ export class HtmlRenderer {
 
 			// Calculate desired position relative to the page top
 			const contentRect = annotation.contentElement.getBoundingClientRect();
-			const targetTop = contentRect.top - pageRect.top;
+			const targetTop = (contentRect.top - pageRect.top) / zoom;
 			const desiredTop = Math.max(targetTop, lastBottom + GAP);
 
 			// Push card down with margin-top (normal flow prevents overlap)
@@ -948,8 +956,6 @@ section.${c}.${c}-has-track-changes {
     background: transparent;
     overflow-y: visible;
     box-sizing: border-box;
-    padding-top: inherit;
-    padding-bottom: inherit;
     border-left: 1px solid var(--docx-border-color);
 }
 .${c}-track-changes-margin .${c}-tc-annotation {
@@ -1119,6 +1125,7 @@ section.${c}.${c}-has-track-changes {
 }
 /* Colored left border per change type */
 .${c}-tc-annotation-inserted { border-left-color: var(--docx-color-inserted); }
+.${c}-tc-annotation-replaced { border-left-color: var(--docx-color-inserted); }
 .${c}-tc-annotation-deleted { border-left-color: var(--docx-color-deleted); }
 .${c}-tc-annotation-moveFrom,
 .${c}-tc-annotation-moveTo { border-left-color: var(--docx-color-moved); }
@@ -1191,6 +1198,7 @@ section.${c}.${c}-has-track-changes {
     letter-spacing: 0;
 }
 .${c}-tc-annotation-inserted .${c}-tc-annotation-type { color: var(--docx-color-inserted); }
+.${c}-tc-annotation-replaced .${c}-tc-annotation-type { color: var(--docx-color-inserted); }
 .${c}-tc-annotation-deleted .${c}-tc-annotation-type { color: var(--docx-color-deleted); }
 .${c}-tc-annotation-moveFrom .${c}-tc-annotation-type,
 .${c}-tc-annotation-moveTo .${c}-tc-annotation-type { color: var(--docx-color-moved); }
@@ -1231,6 +1239,7 @@ section.${c}.${c}-has-track-changes {
 }
 /* Re-apply colored left border in floating mode */
 .${c}-track-changes-floating .${c}-tc-annotation-inserted { border-left-color: var(--docx-color-inserted); }
+.${c}-track-changes-floating .${c}-tc-annotation-replaced { border-left-color: var(--docx-color-inserted); }
 .${c}-track-changes-floating .${c}-tc-annotation-deleted { border-left-color: var(--docx-color-deleted); }
 .${c}-track-changes-floating .${c}-tc-annotation-moveFrom,
 .${c}-track-changes-floating .${c}-tc-annotation-moveTo { border-left-color: var(--docx-color-moved); }
@@ -2202,9 +2211,11 @@ section.${c}.${c}-has-track-changes {
 	}
 
 	renderMarginAnnotationsFromMap(marginContainer: HTMLElement, contentWrapper: HTMLElement, trackChangeMap: Record<string, TrackChangeEntry>): void {
-		const annotations = Object.values(trackChangeMap)
-			.map(entry => entry.annotation)
-			.filter(a => a.contentElement);
+		const annotations = this.mergeReplacePairs(
+			Object.values(trackChangeMap)
+				.map(entry => entry.annotation)
+				.filter(a => a.contentElement)
+		);
 
 		if (annotations.length === 0) return;
 
@@ -2216,12 +2227,14 @@ section.${c}.${c}-has-track-changes {
 		});
 
 		const containerRect = marginContainer.getBoundingClientRect();
+		// rect deltas are visual (zoomed) px; offsetTop/marginTop are layout px
+		const zoom = this.effectiveZoom(marginContainer);
 		const GAP = 8;
 		let lastBottom = -GAP;
 
 		for (const annotation of sortedAnnotations) {
 			const contentRect = annotation.contentElement.getBoundingClientRect();
-			const targetTop = contentRect.top - containerRect.top;
+			const targetTop = (contentRect.top - containerRect.top) / zoom;
 
 			// Create annotation element
 			const annotEl = this.createAnnotationElement(annotation);
@@ -2261,6 +2274,7 @@ section.${c}.${c}-has-track-changes {
 		const typeLabels: Record<TrackChangeType, string> = {
 			'inserted': 'Inserted',
 			'deleted': 'Deleted',
+			'replaced': 'Replaced',
 			'moveFrom': 'Moved from',
 			'moveTo': 'Moved to',
 			'formatChange': 'Formatted',
@@ -2896,7 +2910,9 @@ section.${c}.${c}-has-track-changes {
 		const intendedHeight = parseFloat(cs.minHeight);
 		if (!intendedHeight || isNaN(intendedHeight)) return null;
 
-		const actualHeight = section.getBoundingClientRect().height;
+		// rects are in visual (zoomed) px; minHeight/padding are layout px
+		const zoom = this.effectiveZoom(section);
+		const actualHeight = section.getBoundingClientRect().height / zoom;
 		if (actualHeight <= intendedHeight + 1) return null;
 
 		const paddingTop = parseFloat(cs.paddingTop) || 0;
@@ -2908,7 +2924,7 @@ section.${c}.${c}-has-track-changes {
 			if (child === article) continue;
 			const pos = getComputedStyle(child as HTMLElement).position;
 			if (pos === 'absolute' || pos === 'fixed') continue;
-			nonArticleHeight += (child as HTMLElement).getBoundingClientRect().height;
+			nonArticleHeight += (child as HTMLElement).getBoundingClientRect().height / zoom;
 		}
 
 		const availableHeight = intendedHeight - paddingTop - paddingBottom - nonArticleHeight;
@@ -2920,7 +2936,7 @@ section.${c}.${c}-has-track-changes {
 
 		for (let i = 0; i < children.length; i++) {
 			const childRect = children[i].getBoundingClientRect();
-			const childBottom = childRect.bottom - articleTop;
+			const childBottom = (childRect.bottom - articleTop) / zoom;
 			if (childBottom > availableHeight && i > 0) {
 				breakIndex = i;
 				break;
@@ -3050,6 +3066,60 @@ section.${c}.${c}-has-track-changes {
 	}
 
 	/** Walk offsetParent chain from el up to ancestor for zoom-independent Y offset */
+	/** True when b directly follows a in the DOM (skipping whitespace-only text nodes) */
+	private isDomAdjacent(a: HTMLElement, b: HTMLElement): boolean {
+		let n: Node | null = a.nextSibling;
+		while (n && n.nodeType === Node.TEXT_NODE && !/\S/.test(n.textContent ?? '')) n = n.nextSibling;
+		return n === b;
+	}
+
+	/**
+	 * Collapse adjacent deleted+inserted pairs by the same author into a single
+	 * 'replaced' annotation ("old → new"), the way Word groups a replacement.
+	 * Halves the card count for redlines, which keeps margin cards target-aligned.
+	 */
+	private mergeReplacePairs(annotations: TrackChangeAnnotation[]): TrackChangeAnnotation[] {
+		const merged: TrackChangeAnnotation[] = [];
+		const used = new Set<TrackChangeAnnotation>();
+		for (const a of annotations) {
+			if (used.has(a)) continue;
+			let partner: TrackChangeAnnotation | undefined;
+			if ((a.changeType === 'deleted' || a.changeType === 'inserted') && a.contentElement) {
+				partner = annotations.find(b =>
+					b !== a && !used.has(b) && b.contentElement &&
+					b.author === a.author &&
+					((a.changeType === 'deleted' && b.changeType === 'inserted') ||
+						(a.changeType === 'inserted' && b.changeType === 'deleted')) &&
+					(this.isDomAdjacent(a.contentElement, b.contentElement) ||
+						this.isDomAdjacent(b.contentElement, a.contentElement))
+				);
+			}
+			if (partner) {
+				used.add(a);
+				used.add(partner);
+				const del = a.changeType === 'deleted' ? a : partner;
+				const ins = a.changeType === 'inserted' ? a : partner;
+				merged.push({
+					id: ins.id,
+					author: ins.author,
+					date: ins.date || del.date,
+					changeType: 'replaced',
+					previewText: `${del.previewText} → ${ins.previewText}`,
+					contentElement: ins.contentElement,
+				});
+			} else {
+				merged.push(a);
+			}
+		}
+		return merged;
+	}
+
+	/** Effective cumulative CSS zoom on el (visual px per layout px) — 1 when unzoomed */
+	private effectiveZoom(el: HTMLElement): number {
+		const w = el.offsetWidth;
+		return w ? el.getBoundingClientRect().width / w : 1;
+	}
+
 	private offsetTopRelativeTo(el: HTMLElement, ancestor: HTMLElement): number {
 		let y = 0;
 		let cur: HTMLElement | null = el;

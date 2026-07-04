@@ -3576,6 +3576,7 @@ class HtmlRenderer {
             });
             floatingPanel.style.width = this.options.trackChangesMarginWidth;
             this.floatingPanelElement = floatingPanel;
+            wrapper.style.paddingRight = `calc(${this.options.trackChangesMarginWidth} + 16px)`;
             const firstPage = children[0];
             if (firstPage) {
                 firstPage.style.position = 'relative';
@@ -3586,15 +3587,16 @@ class HtmlRenderer {
         return wrapper;
     }
     renderFloatingAnnotations(floatingPanel, wrapper) {
-        const annotations = Object.values(this.floatingTrackChangeMap)
+        const annotations = this.mergeReplacePairs(Object.values(this.floatingTrackChangeMap)
             .map(entry => entry.annotation)
-            .filter(a => a.contentElement);
+            .filter(a => a.contentElement));
         if (annotations.length === 0)
             return;
         const firstPage = floatingPanel.parentElement;
         if (!firstPage)
             return;
         const pageRect = firstPage.getBoundingClientRect();
+        const zoom = this.effectiveZoom(firstPage);
         const sortedAnnotations = annotations.sort((a, b) => {
             const rectA = a.contentElement.getBoundingClientRect();
             const rectB = b.contentElement.getBoundingClientRect();
@@ -3607,7 +3609,7 @@ class HtmlRenderer {
             floatingPanel.appendChild(annotEl);
             annotation.element = annotEl;
             const contentRect = annotation.contentElement.getBoundingClientRect();
-            const targetTop = contentRect.top - pageRect.top;
+            const targetTop = (contentRect.top - pageRect.top) / zoom;
             const desiredTop = Math.max(targetTop, lastBottom + GAP);
             const currentPos = annotEl.offsetTop;
             if (desiredTop > currentPos) {
@@ -3713,6 +3715,15 @@ class HtmlRenderer {
         }
         var styleText = `${designSystem}${wrapperStyle}
 .${c} { color: var(--docx-text-primary, black); hyphens: auto; text-underline-position: from-font; }
+:root.dark .${c} span, :root.dark .${c} p,
+.dark .${c}-wrapper .${c} span, .dark .${c}-wrapper .${c} p,
+.${c}-wrapper.dark .${c} span, .${c}-wrapper.dark .${c} p { color: var(--docx-text-primary) !important; }
+:root.dark .${c} table td, :root.dark .${c} table th,
+.dark .${c}-wrapper .${c} table td, .dark .${c}-wrapper .${c} table th,
+.${c}-wrapper.dark .${c} table td, .${c}-wrapper.dark .${c} table th {
+    border-color: var(--docx-border-color) !important;
+    background-color: var(--docx-bg-primary) !important;
+}
 section.${c} { box-sizing: border-box; display: flex; flex-flow: column nowrap; position: relative; overflow: hidden; }
 section.${c}>article { margin-bottom: auto; z-index: 1; }
 section.${c}>footer { z-index: 1; }
@@ -3820,8 +3831,6 @@ section.${c}.${c}-has-track-changes {
     background: transparent;
     overflow-y: visible;
     box-sizing: border-box;
-    padding-top: inherit;
-    padding-bottom: inherit;
     border-left: 1px solid var(--docx-border-color);
 }
 .${c}-track-changes-margin .${c}-tc-annotation {
@@ -3889,6 +3898,7 @@ section.${c}.${c}-has-track-changes {
     font-style: normal !important;
     font-size: 11px !important;
     line-height: 1.4 !important;
+    color: var(--docx-text-primary) !important;
 }
 .${c}-tc-popover {
     opacity: 0;
@@ -3936,14 +3946,14 @@ section.${c}.${c}-has-track-changes {
     font-family: inherit;
     font-size: 11px;
     font-weight: 600;
-    color: var(--docx-text-primary);
+    color: var(--docx-text-primary) !important;
     margin-bottom: 2px;
 }
 .${c}-tc-popover-date {
     font-family: inherit;
     font-size: 10px;
     font-weight: 400;
-    color: var(--docx-text-secondary);
+    color: var(--docx-text-secondary) !important;
     display: block;
     margin-bottom: 4px;
 }
@@ -3951,7 +3961,7 @@ section.${c}.${c}-has-track-changes {
     font-family: inherit;
     font-size: 11px;
     font-weight: 400;
-    color: var(--docx-text-secondary);
+    color: var(--docx-text-secondary) !important;
 }
 .${c}-tc-popover-type {
     font-family: inherit;
@@ -3972,6 +3982,7 @@ section.${c}.${c}-has-track-changes {
     font-style: normal !important;
     font-size: 11px !important;
     line-height: 1.4 !important;
+    color: var(--docx-text-primary) !important;
 }
 .${c}-tc-annotation {
     background: var(--docx-bg-primary);
@@ -3989,6 +4000,7 @@ section.${c}.${c}-has-track-changes {
 }
 /* Colored left border per change type */
 .${c}-tc-annotation-inserted { border-left-color: var(--docx-color-inserted); }
+.${c}-tc-annotation-replaced { border-left-color: var(--docx-color-inserted); }
 .${c}-tc-annotation-deleted { border-left-color: var(--docx-color-deleted); }
 .${c}-tc-annotation-moveFrom,
 .${c}-tc-annotation-moveTo { border-left-color: var(--docx-color-moved); }
@@ -4025,14 +4037,14 @@ section.${c}.${c}-has-track-changes {
     font-family: inherit;
     font-size: 11px !important;
     font-weight: 600;
-    color: var(--docx-text-primary);
+    color: var(--docx-text-primary) !important;
     white-space: nowrap;
 }
 .${c}-tc-annotation-date {
     font-family: inherit;
     font-size: 10px !important;
     font-weight: 400;
-    color: var(--docx-text-muted);
+    color: var(--docx-text-muted) !important;
     white-space: nowrap;
 }
 
@@ -4041,7 +4053,7 @@ section.${c}.${c}-has-track-changes {
     font-family: inherit;
     font-size: 11px;
     font-weight: 400;
-    color: var(--docx-text-secondary);
+    color: var(--docx-text-secondary) !important;
     line-height: 1.4;
     display: -webkit-box;
     -webkit-line-clamp: 3;
@@ -4061,6 +4073,7 @@ section.${c}.${c}-has-track-changes {
     letter-spacing: 0;
 }
 .${c}-tc-annotation-inserted .${c}-tc-annotation-type { color: var(--docx-color-inserted); }
+.${c}-tc-annotation-replaced .${c}-tc-annotation-type { color: var(--docx-color-inserted); }
 .${c}-tc-annotation-deleted .${c}-tc-annotation-type { color: var(--docx-color-deleted); }
 .${c}-tc-annotation-moveFrom .${c}-tc-annotation-type,
 .${c}-tc-annotation-moveTo .${c}-tc-annotation-type { color: var(--docx-color-moved); }
@@ -4101,6 +4114,7 @@ section.${c}.${c}-has-track-changes {
 }
 /* Re-apply colored left border in floating mode */
 .${c}-track-changes-floating .${c}-tc-annotation-inserted { border-left-color: var(--docx-color-inserted); }
+.${c}-track-changes-floating .${c}-tc-annotation-replaced { border-left-color: var(--docx-color-inserted); }
 .${c}-track-changes-floating .${c}-tc-annotation-deleted { border-left-color: var(--docx-color-deleted); }
 .${c}-track-changes-floating .${c}-tc-annotation-moveFrom,
 .${c}-track-changes-floating .${c}-tc-annotation-moveTo { border-left-color: var(--docx-color-moved); }
@@ -4130,6 +4144,45 @@ section.${c}.${c}-has-track-changes {
 .${c}-track-changes-floating[data-scrollable]::-webkit-scrollbar-thumb {
     background: var(--docx-border-color);
     border-radius: 2px;
+}
+
+/* Accept / Reject buttons */
+.${c}-tc-popover-actions,
+.${c}-tc-annotation-actions {
+    display: flex;
+    gap: 6px;
+    margin-top: 6px;
+}
+.${c}-tc-btn {
+    padding: 2px 10px;
+    border: 1px solid var(--docx-border-color);
+    border-radius: 4px;
+    cursor: pointer;
+    font-size: 11px !important;
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif !important;
+    line-height: 1.4 !important;
+    background: var(--docx-bg-primary);
+    color: var(--docx-text-primary);
+    transition: background 0.15s, border-color 0.15s;
+}
+.${c}-tc-btn:hover {
+    background: var(--docx-bg-secondary);
+}
+.${c}-tc-btn-accept {
+    color: var(--docx-color-inserted);
+    border-color: var(--docx-color-inserted);
+}
+.${c}-tc-btn-accept:hover {
+    background: var(--docx-color-inserted);
+    color: white;
+}
+.${c}-tc-btn-reject {
+    color: var(--docx-color-deleted);
+    border-color: var(--docx-color-deleted);
+}
+.${c}-tc-btn-reject:hover {
+    background: var(--docx-color-deleted);
+    color: white;
 }
 `;
         }
@@ -4370,6 +4423,9 @@ section.${c}.${c}-has-track-changes {
         return result;
     }
     registerFormatChange(formatChange, element) {
+        const decision = this.getTrackChangeDecision(formatChange.id);
+        if (decision === 'accept' || decision === 'reject')
+            return;
         if (this.options.trackChangesMode !== 'margin' && this.options.trackChangesMode !== 'floating')
             return;
         element.classList.add(`${this.className}-tc-content`, `${this.className}-tc-formatChange`);
@@ -4550,9 +4606,16 @@ section.${c}.${c}-has-track-changes {
         }
         return null;
     }
+    getTrackChangeDecision(id) {
+        return this.options.trackChangeDecisions?.[id];
+    }
     renderInserted(elem) {
-        if (!this.options.renderChanges) {
+        const decision = this.getTrackChangeDecision(elem.id);
+        if (decision === 'accept' || !this.options.renderChanges) {
             return this.renderElements(elem.children);
+        }
+        if (decision === 'reject') {
+            return null;
         }
         if (this.options.trackChangesMode === 'margin' || this.options.trackChangesMode === 'floating') {
             return this.renderTrackChangeWithMargin(elem, 'inserted');
@@ -4560,8 +4623,12 @@ section.${c}.${c}-has-track-changes {
         return this.renderTrackChangeInline(elem, 'inserted');
     }
     renderDeleted(elem) {
-        if (!this.options.renderChanges) {
+        const decision = this.getTrackChangeDecision(elem.id);
+        if (decision === 'accept' || !this.options.renderChanges) {
             return null;
+        }
+        if (decision === 'reject') {
+            return this.renderElements(elem.children);
         }
         if (this.options.trackChangesMode === 'margin' || this.options.trackChangesMode === 'floating') {
             return this.renderTrackChangeWithMargin(elem, 'deleted');
@@ -4569,8 +4636,12 @@ section.${c}.${c}-has-track-changes {
         return this.renderTrackChangeInline(elem, 'deleted');
     }
     renderMoveFrom(elem) {
-        if (!this.options.renderChanges) {
+        const decision = this.getTrackChangeDecision(elem.id);
+        if (decision === 'accept' || !this.options.renderChanges) {
             return null;
+        }
+        if (decision === 'reject') {
+            return this.renderElements(elem.children);
         }
         if (this.options.trackChangesMode === 'margin' || this.options.trackChangesMode === 'floating') {
             return this.renderTrackChangeWithMargin(elem, 'moveFrom');
@@ -4578,8 +4649,12 @@ section.${c}.${c}-has-track-changes {
         return this.renderTrackChangeInline(elem, 'moveFrom');
     }
     renderMoveTo(elem) {
-        if (!this.options.renderChanges) {
+        const decision = this.getTrackChangeDecision(elem.id);
+        if (decision === 'accept' || !this.options.renderChanges) {
             return this.renderElements(elem.children);
+        }
+        if (decision === 'reject') {
+            return null;
         }
         if (this.options.trackChangesMode === 'margin' || this.options.trackChangesMode === 'floating') {
             return this.renderTrackChangeWithMargin(elem, 'moveTo');
@@ -4635,6 +4710,28 @@ section.${c}.${c}-has-track-changes {
         const previewText = this.extractPreviewText(elem);
         content.appendChild(this.htmlDocument.createTextNode(previewText));
         popover.appendChild(content);
+        if (this.options.onTrackChangeDecision && this.options.showTrackChangeButtons) {
+            const actions = this.createElement('div', {
+                className: `${this.className}-tc-popover-actions`
+            });
+            const acceptBtn = this.createElement('button', {
+                className: `${this.className}-tc-btn ${this.className}-tc-btn-accept`
+            }, ['Accept']);
+            acceptBtn.addEventListener('click', (e) => {
+                e.stopPropagation();
+                this.options.onTrackChangeDecision(elem.id, 'accept');
+            });
+            actions.appendChild(acceptBtn);
+            const rejectBtn = this.createElement('button', {
+                className: `${this.className}-tc-btn ${this.className}-tc-btn-reject`
+            }, ['Reject']);
+            rejectBtn.addEventListener('click', (e) => {
+                e.stopPropagation();
+                this.options.onTrackChangeDecision(elem.id, 'reject');
+            });
+            actions.appendChild(rejectBtn);
+            popover.appendChild(actions);
+        }
         wrapper.appendChild(popover);
         return wrapper;
     }
@@ -4709,9 +4806,9 @@ section.${c}.${c}-has-track-changes {
         return text || '(empty)';
     }
     renderMarginAnnotationsFromMap(marginContainer, contentWrapper, trackChangeMap) {
-        const annotations = Object.values(trackChangeMap)
+        const annotations = this.mergeReplacePairs(Object.values(trackChangeMap)
             .map(entry => entry.annotation)
-            .filter(a => a.contentElement);
+            .filter(a => a.contentElement));
         if (annotations.length === 0)
             return;
         const sortedAnnotations = annotations.sort((a, b) => {
@@ -4720,11 +4817,12 @@ section.${c}.${c}-has-track-changes {
             return rectA.top - rectB.top;
         });
         const containerRect = marginContainer.getBoundingClientRect();
+        const zoom = this.effectiveZoom(marginContainer);
         const GAP = 8;
         let lastBottom = -GAP;
         for (const annotation of sortedAnnotations) {
             const contentRect = annotation.contentElement.getBoundingClientRect();
-            const targetTop = contentRect.top - containerRect.top;
+            const targetTop = (contentRect.top - containerRect.top) / zoom;
             const annotEl = this.createAnnotationElement(annotation);
             marginContainer.appendChild(annotEl);
             const desiredTop = Math.max(targetTop, lastBottom + GAP);
@@ -4754,6 +4852,7 @@ section.${c}.${c}-has-track-changes {
         const typeLabels = {
             'inserted': 'Inserted',
             'deleted': 'Deleted',
+            'replaced': 'Replaced',
             'moveFrom': 'Moved from',
             'moveTo': 'Moved to',
             'formatChange': 'Formatted',
@@ -4816,6 +4915,30 @@ section.${c}.${c}-has-track-changes {
             content.appendChild(this.htmlDocument.createTextNode(annotation.previewText));
         }
         body.appendChild(content);
+        if (this.options.onTrackChangeDecision && this.options.showTrackChangeButtons && annotation.changeType !== 'comment') {
+            const actions = this.createElement("div", {
+                className: `${this.className}-tc-annotation-actions`
+            });
+            const acceptBtn = this.createElement("button", {
+                className: `${this.className}-tc-btn ${this.className}-tc-btn-accept`
+            }, ['Accept']);
+            acceptBtn.setAttribute('title', 'Accept this change');
+            acceptBtn.addEventListener('click', (e) => {
+                e.stopPropagation();
+                this.options.onTrackChangeDecision(annotation.id, 'accept');
+            });
+            actions.appendChild(acceptBtn);
+            const rejectBtn = this.createElement("button", {
+                className: `${this.className}-tc-btn ${this.className}-tc-btn-reject`
+            }, ['Reject']);
+            rejectBtn.setAttribute('title', 'Reject this change');
+            rejectBtn.addEventListener('click', (e) => {
+                e.stopPropagation();
+                this.options.onTrackChangeDecision(annotation.id, 'reject');
+            });
+            actions.appendChild(rejectBtn);
+            body.appendChild(actions);
+        }
         row.appendChild(body);
         el.appendChild(row);
         return el;
@@ -5222,7 +5345,8 @@ section.${c}.${c}-has-track-changes {
         const intendedHeight = parseFloat(cs.minHeight);
         if (!intendedHeight || isNaN(intendedHeight))
             return null;
-        const actualHeight = section.getBoundingClientRect().height;
+        const zoom = this.effectiveZoom(section);
+        const actualHeight = section.getBoundingClientRect().height / zoom;
         if (actualHeight <= intendedHeight + 1)
             return null;
         const paddingTop = parseFloat(cs.paddingTop) || 0;
@@ -5234,7 +5358,7 @@ section.${c}.${c}-has-track-changes {
             const pos = getComputedStyle(child).position;
             if (pos === 'absolute' || pos === 'fixed')
                 continue;
-            nonArticleHeight += child.getBoundingClientRect().height;
+            nonArticleHeight += child.getBoundingClientRect().height / zoom;
         }
         const availableHeight = intendedHeight - paddingTop - paddingBottom - nonArticleHeight;
         if (availableHeight <= 0)
@@ -5244,7 +5368,7 @@ section.${c}.${c}-has-track-changes {
         let breakIndex = -1;
         for (let i = 0; i < children.length; i++) {
             const childRect = children[i].getBoundingClientRect();
-            const childBottom = childRect.bottom - articleTop;
+            const childBottom = (childRect.bottom - articleTop) / zoom;
             if (childBottom > availableHeight && i > 0) {
                 breakIndex = i;
                 break;
@@ -5334,6 +5458,51 @@ section.${c}.${c}-has-track-changes {
         for (const panel of Array.from(panels)) {
             this.recalcPanelPositions(panel);
         }
+    }
+    isDomAdjacent(a, b) {
+        let n = a.nextSibling;
+        while (n && n.nodeType === Node.TEXT_NODE && !/\S/.test(n.textContent ?? ''))
+            n = n.nextSibling;
+        return n === b;
+    }
+    mergeReplacePairs(annotations) {
+        const merged = [];
+        const used = new Set();
+        for (const a of annotations) {
+            if (used.has(a))
+                continue;
+            let partner;
+            if ((a.changeType === 'deleted' || a.changeType === 'inserted') && a.contentElement) {
+                partner = annotations.find(b => b !== a && !used.has(b) && b.contentElement &&
+                    b.author === a.author &&
+                    ((a.changeType === 'deleted' && b.changeType === 'inserted') ||
+                        (a.changeType === 'inserted' && b.changeType === 'deleted')) &&
+                    (this.isDomAdjacent(a.contentElement, b.contentElement) ||
+                        this.isDomAdjacent(b.contentElement, a.contentElement)));
+            }
+            if (partner) {
+                used.add(a);
+                used.add(partner);
+                const del = a.changeType === 'deleted' ? a : partner;
+                const ins = a.changeType === 'inserted' ? a : partner;
+                merged.push({
+                    id: ins.id,
+                    author: ins.author,
+                    date: ins.date || del.date,
+                    changeType: 'replaced',
+                    previewText: `${del.previewText} → ${ins.previewText}`,
+                    contentElement: ins.contentElement,
+                });
+            }
+            else {
+                merged.push(a);
+            }
+        }
+        return merged;
+    }
+    effectiveZoom(el) {
+        const w = el.offsetWidth;
+        return w ? el.getBoundingClientRect().width / w : 1;
     }
     offsetTopRelativeTo(el, ancestor) {
         let y = 0;
@@ -5458,6 +5627,8 @@ const defaultOptions = {
     renderAltChunks: true,
     trackChangesMode: 'inline',
     trackChangesMarginWidth: '220px',
+    trackChangeDecisions: {},
+    showTrackChangeButtons: true,
     commentsMode: 'inline'
 };
 function parseAsync(data, userOptions) {
@@ -5474,6 +5645,41 @@ async function renderAsync(data, bodyContainer, styleContainer, userOptions) {
     await renderDocument(doc, bodyContainer, styleContainer, userOptions);
     return doc;
 }
+function collectTrackChangeIds(elem, ids) {
+    const trackChangeTypes = [DomType.Inserted, DomType.Deleted, DomType.MoveFrom, DomType.MoveTo, DomType.FormatChange];
+    if (trackChangeTypes.includes(elem.type)) {
+        const tc = elem;
+        if (tc.id)
+            ids.add(tc.id);
+    }
+    if (elem.children) {
+        for (const child of elem.children) {
+            collectTrackChangeIds(child, ids);
+        }
+    }
+}
+function getTrackChangeIds(document) {
+    const ids = new Set();
+    const doc = document;
+    if (doc?.documentPart?.body) {
+        collectTrackChangeIds(doc.documentPart.body, ids);
+    }
+    return Array.from(ids);
+}
+function acceptAllChanges(document) {
+    const decisions = {};
+    for (const id of getTrackChangeIds(document)) {
+        decisions[id] = 'accept';
+    }
+    return decisions;
+}
+function rejectAllChanges(document) {
+    const decisions = {};
+    for (const id of getTrackChangeIds(document)) {
+        decisions[id] = 'reject';
+    }
+    return decisions;
+}
 
-export { defaultOptions, parseAsync, renderAsync, renderDocument };
+export { acceptAllChanges, defaultOptions, getTrackChangeIds, parseAsync, rejectAllChanges, renderAsync, renderDocument };
 //# sourceMappingURL=docx-preview.mjs.map

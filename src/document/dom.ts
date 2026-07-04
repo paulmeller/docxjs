@@ -173,7 +173,8 @@ export interface NumberingPicBullet {
     style?: string;
 }
 
-export type TrackChangeType = 'inserted' | 'deleted' | 'moveFrom' | 'moveTo' | 'formatChange' | 'comment';
+// 'replaced' is synthesized at render time from an adjacent deleted+inserted pair
+export type TrackChangeType = 'inserted' | 'deleted' | 'replaced' | 'moveFrom' | 'moveTo' | 'formatChange' | 'comment';
 
 export interface WmlTrackChange extends OpenXmlElement {
     id: string;

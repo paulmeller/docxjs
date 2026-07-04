@@ -3580,6 +3580,7 @@
                 });
                 floatingPanel.style.width = this.options.trackChangesMarginWidth;
                 this.floatingPanelElement = floatingPanel;
+                wrapper.style.paddingRight = `calc(${this.options.trackChangesMarginWidth} + 16px)`;
                 const firstPage = children[0];
                 if (firstPage) {
                     firstPage.style.position = 'relative';
@@ -3590,15 +3591,16 @@
             return wrapper;
         }
         renderFloatingAnnotations(floatingPanel, wrapper) {
-            const annotations = Object.values(this.floatingTrackChangeMap)
+            const annotations = this.mergeReplacePairs(Object.values(this.floatingTrackChangeMap)
                 .map(entry => entry.annotation)
-                .filter(a => a.contentElement);
+                .filter(a => a.contentElement));
             if (annotations.length === 0)
                 return;
             const firstPage = floatingPanel.parentElement;
             if (!firstPage)
                 return;
             const pageRect = firstPage.getBoundingClientRect();
+            const zoom = this.effectiveZoom(firstPage);
             const sortedAnnotations = annotations.sort((a, b) => {
                 const rectA = a.contentElement.getBoundingClientRect();
                 const rectB = b.contentElement.getBoundingClientRect();
@@ -3611,7 +3613,7 @@
                 floatingPanel.appendChild(annotEl);
                 annotation.element = annotEl;
                 const contentRect = annotation.contentElement.getBoundingClientRect();
-                const targetTop = contentRect.top - pageRect.top;
+                const targetTop = (contentRect.top - pageRect.top) / zoom;
                 const desiredTop = Math.max(targetTop, lastBottom + GAP);
                 const currentPos = annotEl.offsetTop;
                 if (desiredTop > currentPos) {
@@ -3833,8 +3835,6 @@ section.${c}.${c}-has-track-changes {
     background: transparent;
     overflow-y: visible;
     box-sizing: border-box;
-    padding-top: inherit;
-    padding-bottom: inherit;
     border-left: 1px solid var(--docx-border-color);
 }
 .${c}-track-changes-margin .${c}-tc-annotation {
@@ -4004,6 +4004,7 @@ section.${c}.${c}-has-track-changes {
 }
 /* Colored left border per change type */
 .${c}-tc-annotation-inserted { border-left-color: var(--docx-color-inserted); }
+.${c}-tc-annotation-replaced { border-left-color: var(--docx-color-inserted); }
 .${c}-tc-annotation-deleted { border-left-color: var(--docx-color-deleted); }
 .${c}-tc-annotation-moveFrom,
 .${c}-tc-annotation-moveTo { border-left-color: var(--docx-color-moved); }
@@ -4076,6 +4077,7 @@ section.${c}.${c}-has-track-changes {
     letter-spacing: 0;
 }
 .${c}-tc-annotation-inserted .${c}-tc-annotation-type { color: var(--docx-color-inserted); }
+.${c}-tc-annotation-replaced .${c}-tc-annotation-type { color: var(--docx-color-inserted); }
 .${c}-tc-annotation-deleted .${c}-tc-annotation-type { color: var(--docx-color-deleted); }
 .${c}-tc-annotation-moveFrom .${c}-tc-annotation-type,
 .${c}-tc-annotation-moveTo .${c}-tc-annotation-type { color: var(--docx-color-moved); }
@@ -4116,6 +4118,7 @@ section.${c}.${c}-has-track-changes {
 }
 /* Re-apply colored left border in floating mode */
 .${c}-track-changes-floating .${c}-tc-annotation-inserted { border-left-color: var(--docx-color-inserted); }
+.${c}-track-changes-floating .${c}-tc-annotation-replaced { border-left-color: var(--docx-color-inserted); }
 .${c}-track-changes-floating .${c}-tc-annotation-deleted { border-left-color: var(--docx-color-deleted); }
 .${c}-track-changes-floating .${c}-tc-annotation-moveFrom,
 .${c}-track-changes-floating .${c}-tc-annotation-moveTo { border-left-color: var(--docx-color-moved); }
@@ -4807,9 +4810,9 @@ section.${c}.${c}-has-track-changes {
             return text || '(empty)';
         }
         renderMarginAnnotationsFromMap(marginContainer, contentWrapper, trackChangeMap) {
-            const annotations = Object.values(trackChangeMap)
+            const annotations = this.mergeReplacePairs(Object.values(trackChangeMap)
                 .map(entry => entry.annotation)
-                .filter(a => a.contentElement);
+                .filter(a => a.contentElement));
             if (annotations.length === 0)
                 return;
             const sortedAnnotations = annotations.sort((a, b) => {
@@ -4818,11 +4821,12 @@ section.${c}.${c}-has-track-changes {
                 return rectA.top - rectB.top;
             });
             const containerRect = marginContainer.getBoundingClientRect();
+            const zoom = this.effectiveZoom(marginContainer);
             const GAP = 8;
             let lastBottom = -GAP;
             for (const annotation of sortedAnnotations) {
                 const contentRect = annotation.contentElement.getBoundingClientRect();
-                const targetTop = contentRect.top - containerRect.top;
+                const targetTop = (contentRect.top - containerRect.top) / zoom;
                 const annotEl = this.createAnnotationElement(annotation);
                 marginContainer.appendChild(annotEl);
                 const desiredTop = Math.max(targetTop, lastBottom + GAP);
@@ -4852,6 +4856,7 @@ section.${c}.${c}-has-track-changes {
             const typeLabels = {
                 'inserted': 'Inserted',
                 'deleted': 'Deleted',
+                'replaced': 'Replaced',
                 'moveFrom': 'Moved from',
                 'moveTo': 'Moved to',
                 'formatChange': 'Formatted',
@@ -5344,7 +5349,8 @@ section.${c}.${c}-has-track-changes {
             const intendedHeight = parseFloat(cs.minHeight);
             if (!intendedHeight || isNaN(intendedHeight))
                 return null;
-            const actualHeight = section.getBoundingClientRect().height;
+            const zoom = this.effectiveZoom(section);
+            const actualHeight = section.getBoundingClientRect().height / zoom;
             if (actualHeight <= intendedHeight + 1)
                 return null;
             const paddingTop = parseFloat(cs.paddingTop) || 0;
@@ -5356,7 +5362,7 @@ section.${c}.${c}-has-track-changes {
                 const pos = getComputedStyle(child).position;
                 if (pos === 'absolute' || pos === 'fixed')
                     continue;
-                nonArticleHeight += child.getBoundingClientRect().height;
+                nonArticleHeight += child.getBoundingClientRect().height / zoom;
             }
             const availableHeight = intendedHeight - paddingTop - paddingBottom - nonArticleHeight;
             if (availableHeight <= 0)
@@ -5366,7 +5372,7 @@ section.${c}.${c}-has-track-changes {
             let breakIndex = -1;
             for (let i = 0; i < children.length; i++) {
                 const childRect = children[i].getBoundingClientRect();
-                const childBottom = childRect.bottom - articleTop;
+                const childBottom = (childRect.bottom - articleTop) / zoom;
                 if (childBottom > availableHeight && i > 0) {
                     breakIndex = i;
                     break;
@@ -5456,6 +5462,51 @@ section.${c}.${c}-has-track-changes {
             for (const panel of Array.from(panels)) {
                 this.recalcPanelPositions(panel);
             }
+        }
+        isDomAdjacent(a, b) {
+            let n = a.nextSibling;
+            while (n && n.nodeType === Node.TEXT_NODE && !/\S/.test(n.textContent ?? ''))
+                n = n.nextSibling;
+            return n === b;
+        }
+        mergeReplacePairs(annotations) {
+            const merged = [];
+            const used = new Set();
+            for (const a of annotations) {
+                if (used.has(a))
+                    continue;
+                let partner;
+                if ((a.changeType === 'deleted' || a.changeType === 'inserted') && a.contentElement) {
+                    partner = annotations.find(b => b !== a && !used.has(b) && b.contentElement &&
+                        b.author === a.author &&
+                        ((a.changeType === 'deleted' && b.changeType === 'inserted') ||
+                            (a.changeType === 'inserted' && b.changeType === 'deleted')) &&
+                        (this.isDomAdjacent(a.contentElement, b.contentElement) ||
+                            this.isDomAdjacent(b.contentElement, a.contentElement)));
+                }
+                if (partner) {
+                    used.add(a);
+                    used.add(partner);
+                    const del = a.changeType === 'deleted' ? a : partner;
+                    const ins = a.changeType === 'inserted' ? a : partner;
+                    merged.push({
+                        id: ins.id,
+                        author: ins.author,
+                        date: ins.date || del.date,
+                        changeType: 'replaced',
+                        previewText: `${del.previewText} → ${ins.previewText}`,
+                        contentElement: ins.contentElement,
+                    });
+                }
+                else {
+                    merged.push(a);
+                }
+            }
+            return merged;
+        }
+        effectiveZoom(el) {
+            const w = el.offsetWidth;
+            return w ? el.getBoundingClientRect().width / w : 1;
         }
         offsetTopRelativeTo(el, ancestor) {
             let y = 0;
