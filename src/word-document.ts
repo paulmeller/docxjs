@@ -1,4 +1,5 @@
 import { OutputType } from "jszip";
+import { emfToSvgDataUrl } from "./metafile";
 
 import { DocumentParser } from './document-parser';
 import { Relationship, RelationshipTypes } from './common/relationship';
@@ -159,7 +160,14 @@ export class WordDocument {
 	}
 
 	async loadDocumentImage(id: string, part?: Part): Promise<string> {
-		const path = this.getPathById(part ?? this.documentPart, id);
+		const resolvedPart = part ?? this.documentPart;
+		const path = this.getPathById(resolvedPart, id);
+		// Some DOCX producers store EMF data under a WMF extension.
+		if (/\.(emf|wmf)$/i.test(path ?? '')) {
+			const buffer = await this._package.load(path, "arraybuffer");
+			const converted = buffer && emfToSvgDataUrl(buffer);
+			if (converted) return converted;
+		}
 		return path ? this.blobToURL(await this._package.load(path, "blob"), path) : null;
 	}
 

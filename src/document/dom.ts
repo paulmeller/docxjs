@@ -53,6 +53,13 @@ export enum DomType {
 	MmlBar = "mmlBar",
 	MmlGroupChar = "mmlGroupChar",
 	VmlElement = "vmlElement",
+	MoveFrom = "moveFrom",
+	MoveTo = "moveTo",
+	MoveFromRangeStart = "moveFromRangeStart",
+	MoveFromRangeEnd = "moveFromRangeEnd",
+	MoveToRangeStart = "moveToRangeStart",
+	MoveToRangeEnd = "moveToRangeEnd",
+	FormatChange = "formatChange",
 	Inserted = "inserted",
 	Deleted = "deleted",
 	DeletedText = "deletedText",
@@ -72,6 +79,7 @@ export interface OpenXmlElement {
 	styleName?: string; //style name
 	className?: string; //class mods
 
+    formatChange?: WmlChange;
     parent?: OpenXmlElement;
 }
 
@@ -101,7 +109,12 @@ export interface WmlSmartTag extends OpenXmlElement {
     element?: string;
 }
 
+export type TrackChangeType = 'inserted' | 'deleted' | 'moveFrom' | 'moveTo' | 'formatChange';
+
 export interface WmlChange extends OpenXmlElement {
+    changeType?: TrackChangeType;
+    formatDescription?: string;
+    previousStyle?: Record<string, string>;
     id: string;
     author: string;
     date: string;

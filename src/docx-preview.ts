@@ -2,6 +2,10 @@ import { WordDocument } from './word-document';
 import { DocumentParser } from './document-parser';
 import { HtmlRenderer } from './html-renderer';
 import { h } from './html';
+import { collectChangeIds } from './track-changes';
+
+export type TrackChangesMode = 'inline' | 'margin' | 'floating';
+export type TrackChangeDecision = 'accept' | 'reject' | 'pending';
 
 export interface Options {
     inWrapper: boolean;
@@ -23,6 +27,12 @@ export interface Options {
 	renderChanges: boolean;
     renderComments: boolean;
     renderAltChunks: boolean;
+    trackChangesMode: TrackChangesMode;
+    commentsMode: TrackChangesMode;
+    trackChangesMarginWidth: string;
+    showTrackChangeButtons: boolean;
+    trackChangeDecisions: Record<string, TrackChangeDecision>;
+    onTrackChangeDecision?: (id: string, decision: 'accept' | 'reject') => void;
     h: typeof h;
 }
 
@@ -46,6 +56,11 @@ export const defaultOptions: Options = {
 	renderChanges: false,
     renderComments: false,
     renderAltChunks: true,
+    trackChangesMode: 'inline',
+    commentsMode: 'inline',
+    trackChangesMarginWidth: '220px',
+    showTrackChangeButtons: true,
+    trackChangeDecisions: {},
     h: h
 };
 
@@ -74,4 +89,22 @@ export async function renderAsync(data: Blob | any, bodyContainer: HTMLElement, 
     }
     
     return doc;
+}
+
+export function getTrackChangeIds(document: any): string[] {
+	const ids = new Set<string>();
+	collectChangeIds(document?.documentPart?.body, ids);
+	for (const part of document?.parts ?? []) {
+		collectChangeIds(part.rootElement, ids);
+		for (const note of part.notes ?? []) collectChangeIds(note, ids);
+	}
+	return Array.from(ids);
+}
+
+export function acceptAllChanges(document: any): Record<string, TrackChangeDecision> {
+	return Object.fromEntries(getTrackChangeIds(document).map(id => [id, 'accept']));
+}
+
+export function rejectAllChanges(document: any): Record<string, TrackChangeDecision> {
+	return Object.fromEntries(getTrackChangeIds(document).map(id => [id, 'reject']));
 }

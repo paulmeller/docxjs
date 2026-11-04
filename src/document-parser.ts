@@ -479,11 +479,23 @@ export class DocumentParser {
 	parseChange(type: DomType, node: Element, parentParser: Function): WmlChange {
 		return <WmlChange>{
 			type,
+			changeType: type,
 			children: parentParser(node)?.children ?? [],
 			id: xml.attr(node, "id"),
 			author: xml.attr(node, "author"),
 			date: xml.attr(node, "date"),
 		};
+	}
+
+	parseFormatChange(node: Element): WmlChange {
+		const change = this.parseChange(DomType.FormatChange, node, () => null);
+		change.previousStyle = {};
+		const old = xml.elements(node)[0];
+		if (old) this.parseDefaultProperties(old, change.previousStyle);
+		change.formatDescription = old
+			? `Previous: ${xml.elements(old).map(p => p.localName + (xml.attr(p, "val") ? `: ${xml.attr(p, "val")}` : '')).join(', ')}`
+			: 'Formatting changed';
+		return change;
 	}
 
 	parseAltChunk(node: Element): WmlAltChunk {
@@ -536,6 +548,16 @@ export class DocumentParser {
 					result.children.push(...this.parseSdt(el, e => this.parseParagraph(e).children));
 					break;
 
+				case "moveFrom":
+				case "moveTo":
+					result.children.push(this.parseChange(el.localName === "moveFrom" ? DomType.MoveFrom : DomType.MoveTo, el, e => this.parseParagraph(e)));
+					break;
+				case "moveFromRangeStart":
+				case "moveFromRangeEnd":
+				case "moveToRangeStart":
+				case "moveToRangeEnd":
+					result.children.push({ type: el.localName as DomType, props: { id: xml.attr(el, "id"), name: xml.attr(el, "name") } });
+					break;
 				case "ins":
 					result.children.push(this.parseChange(DomType.Inserted, el, e => this.parseParagraph(e)));
 					break;
@@ -550,6 +572,8 @@ export class DocumentParser {
 	}
 
 	parseParagraphProperties(elem: Element, paragraph: WmlParagraph) {
+		const change = xml.element(elem, "pPrChange");
+		if (change) paragraph.formatChange = this.parseFormatChange(change);
 		this.parseDefaultProperties(elem, paragraph.cssStyle = {}, null, c => {
 			if (parseParagraphProperty(c, paragraph, xml))
 				return true;
@@ -783,6 +807,8 @@ export class DocumentParser {
 	}
 
 	parseRunProperties(elem: Element, run: WmlRun) {
+		const change = xml.element(elem, "rPrChange");
+		if (change) run.formatChange = this.parseFormatChange(change);
 		this.parseDefaultProperties(elem, run.cssStyle = {}, null, c => {
 			switch (c.localName) {
 				case "rStyle":

@@ -24,6 +24,8 @@ import { Part } from './common/part';
 import { VmlElement } from './vml/vml';
 import { WmlCommentRangeStart, WmlCommentReference } from './comments/elements';
 import { cx, h, ns } from './html';
+import { Annotation, AnnotationRenderer, annotationStyle, changeButtons } from './annotations';
+import { changeVisibility } from './track-changes';
 
 interface CellPos {
 	col: number;
@@ -68,6 +70,8 @@ export class HtmlRenderer {
 
 	tasks: Promise<any>[] = [];
 	postRenderTasks: any[] = [];
+	annotations: Annotation[] = [];
+	includeDeletedText = 0;
 	h = h;
 
 	async render(document: WordDocument, options: Options): Promise<Node[]> {
@@ -78,6 +82,8 @@ export class HtmlRenderer {
 		this.h = options.h ?? h;
 		this.styleMap = null;
 		this.tasks = [];
+		this.annotations = [];
+		this.includeDeletedText = 0;
 
 		if (this.options.renderComments && globalThis.Highlight) {
 			this.commentHighlight = new Highlight();
@@ -134,6 +140,9 @@ export class HtmlRenderer {
 
 		this.refreshTabStops();
 
+		if (this.annotations.length) {
+			new AnnotationRenderer(options, this.h).mount(sectionElements, this.annotations);
+		}
 		return result;
 	}
 
@@ -499,9 +508,13 @@ export class HtmlRenderer {
 		const result: Section[][] = [current];
 
 		for (let s of sections) {
+			// Size and orientation belong to the incoming section, not the preceding page.
+			if (this.isPageBreakSection(prev, s.sectProps))
+				result.push(current = []);
+
 			current.push(s);
 
-			if (this.options.ignoreLastRenderedPageBreak || s.pageBreak || this.isPageBreakSection(prev, s.sectProps))
+			if (this.options.ignoreLastRenderedPageBreak || s.pageBreak)
 				result.push(current = []);
 
 			prev = s.sectProps;
@@ -534,6 +547,11 @@ section.${c}>footer { z-index: 1; }
 .${c} a { color: inherit; text-decoration: inherit; }
 .${c} svg { fill: transparent; }
 `;
+
+		if ((this.options.renderChanges && this.options.trackChangesMode !== 'inline')
+			|| (this.options.renderComments && this.options.commentsMode !== 'inline')) {
+			styleText += annotationStyle(c);
+		}
 
 		if (this.options.renderComments) {
 			styleText += `
@@ -870,9 +888,11 @@ section.${c}>footer { z-index: 1; }
 			case DomType.MmlEquationArray:
 				return this.renderMllList(elem);
 
+			case DomType.MoveTo:
 			case DomType.Inserted:
 				return this.renderInserted(elem as WmlChange);
 
+			case DomType.MoveFrom:
 			case DomType.Deleted:
 				return this.renderDeleted(elem as WmlChange);
 
@@ -980,6 +1000,14 @@ section.${c}>footer { z-index: 1; }
 		if (!comment)
 			return null;
 
+		if (this.options.commentsMode !== 'inline') {
+			const anchor = this.h({ tagName: 'span', className: `${this.className}-comment-ref`, children: ['💬'] }) as HTMLElement;
+			const content = this.renderElements(comment.children);
+			this.annotations.push({ change: { ...comment, id: `comment-${comment.id}` }, kind: 'comment', anchor,
+				text: content.map(n => n.textContent).join(''), mode: this.options.commentsMode });
+			return anchor;
+		}
+
 		const commentRefEl = this.h({ tagName: "span", className: `${this.className}-comment-ref`, children: ['💬'] });
 		const commentsContainerEl = this.h({
 			tagName: "div", className: `${this.className}-comment-popover`, children: [
@@ -1048,7 +1076,7 @@ section.${c}>footer { z-index: 1; }
 	}
 
 	renderDeletedText(elem: WmlText) {
-		return this.options.renderChanges ? this.renderText(elem) : null;
+		return this.options.renderChanges || this.includeDeletedText ? this.renderText(elem) : null;
 	}
 
 	renderBreak(elem: WmlBreak) {
@@ -1056,23 +1084,36 @@ section.${c}>footer { z-index: 1; }
 	}
 
 	renderInserted(elem: WmlChange): Node | Node[] {
-		if (this.options.renderChanges)
-			return this.renderChange(elem, "ins");
-
-		return this.renderElements(elem.children);
+		return this.renderRevision(elem, "ins");
 	}
 
-	renderDeleted(elem: WmlChange): Node {
-		if (this.options.renderChanges)
-			return this.renderChange(elem, "del");
+	renderDeleted(elem: WmlChange): Node | Node[] {
+		return this.renderRevision(elem, "del");
+	}
 
-		return null;
+	renderRevision(elem: WmlChange, tag: string): Node | Node[] {
+		const visibility = changeVisibility(elem, this.options.trackChangeDecisions?.[elem.id], this.options.renderChanges);
+		if (visibility === 'hidden') return null;
+		if (visibility === 'revision') return this.renderChange(elem, tag);
+		this.includeDeletedText++;
+		try { return this.renderElements(elem.children); }
+		finally { this.includeDeletedText--; }
 	}
 
 	renderChange(elem: WmlChange, tag: string) {
-		return this.renderContainer(elem, tag as any, {
-			dateTime: elem.date		
-		});
+		const mode = this.options.trackChangesMode;
+		const kind = elem.changeType || (tag === 'ins' ? 'inserted' : 'deleted');
+		const anchor = this.renderContainer(elem, tag as any, { dateTime: elem.date });
+		if (mode !== 'inline') {
+			anchor.classList.add(`${this.className}-tc-${kind}`);
+			anchor.dataset.tcId = elem.id;
+			this.annotations.push({ change: elem, kind, anchor, text: anchor.textContent, mode });
+		}
+		if (mode === 'inline') {
+			const buttons = changeButtons(this.options, this.h, [elem.id]);
+			if (buttons) return [anchor, buttons];
+		}
+		return anchor;
 	}
 
 	renderSymbol(elem: WmlSymbol) {
@@ -1200,6 +1241,7 @@ section.${c}>footer { z-index: 1; }
 	renderVmlElement(elem: VmlElement): SVGElement {
 		var container = this.h({ ns: ns.svg, tagName: "svg", style: elem.cssStyleText }) as SVGElement;
 
+		container.setAttribute("overflow", "hidden");
 		const result = this.renderVmlChildElement(elem);
 
 		if (elem.imageHref?.id) {
@@ -1222,6 +1264,9 @@ section.${c}>footer { z-index: 1; }
 	renderVmlChildElement(elem: VmlElement): any {
 		const result = this.createSvgElement(elem.tagName as any);
 		Object.entries(elem.attrs).forEach(([k, v]) => result.setAttribute(k, v));
+		if (elem.tagName === "rect" && elem.children.some(c => c.type === DomType.VmlElement && (c as VmlElement).tagName === "foreignObject")) {
+			result.setAttribute("fill", "none");
+		}
 
 		for (let child of elem.children) {
 			if (child.type == DomType.VmlElement) {
@@ -1338,7 +1383,14 @@ section.${c}>footer { z-index: 1; }
 	}
 
 	toHTML(elem: OpenXmlElement, ns: ns, tagName: string, children: Node[] = null) {
-		return this.h(this.toH(elem, ns, tagName, children)) as any;
+		const decision = elem.formatChange && this.options.trackChangeDecisions?.[elem.formatChange.id];
+		const rendered = decision === 'reject' ? { ...elem, cssStyle: elem.formatChange.previousStyle } : elem;
+		const result = this.h(this.toH(rendered, ns, tagName, children)) as HTMLElement;
+		if (elem.formatChange && decision !== 'accept' && decision !== 'reject' && this.options.renderChanges && this.options.trackChangesMode !== 'inline') {
+			this.annotations.push({ change: elem.formatChange, kind: 'formatChange', anchor: result,
+				text: elem.formatChange.formatDescription, mode: this.options.trackChangesMode });
+		}
+		return result as any;
 	}
 
 	findStyle(styleName: string) {

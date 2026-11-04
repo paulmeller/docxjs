@@ -1,14 +1,17 @@
 <!DOCTYPE html>
-<html>
+<html lang="en">
 
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, minimum-scale=1.0, viewport-fit=cover" />
-    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/css/bootstrap.min.css" rel="stylesheet"
-        integrity="sha384-1BmE4kWBq78iYhFldvKuhfTAU6auU8tT94WrHftjDbrCEXSU1oBoqyl2QvZ6jIW3" crossorigin="anonymous">
-    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/js/bootstrap.bundle.min.js"
-        integrity="sha384-ka7Sk0Gln4gmtz2MlQnikT1wXgYsOg+OMhuP+IlRH9sENBO0LRn5q+8nbTov4+1p"
-        crossorigin="anonymous"></script>
+    <title>DOCX Preview</title>
+    <!-- Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+        tailwind.config = {
+            darkMode: 'class',
+        }
+    </script>
     <!--dependencies-->
     <script crossorigin src="https://unpkg.com/jszip/dist/jszip.min.js"></script>
     <!--library-->
@@ -22,115 +25,490 @@
 
     <style>
         @media print {
-            .no-print {
-                display: none;
+            .print\:hidden {
+                display: none !important;
             }
-
             .overflow-auto {
                 overflow: initial !important;
             }
         }
+
+        /* Scrollbar */
+        .scrollbar-thin::-webkit-scrollbar {
+            width: 6px;
+            height: 6px;
+        }
+        .scrollbar-thin::-webkit-scrollbar-track {
+            background: transparent;
+        }
+        .scrollbar-thin::-webkit-scrollbar-thumb {
+            background: #d4d4d8;
+            border-radius: 3px;
+        }
+        .dark .scrollbar-thin::-webkit-scrollbar-thumb {
+            background: #3f3f46;
+        }
+        .scrollbar-thin::-webkit-scrollbar-thumb:hover {
+            background: #a1a1aa;
+        }
+        .dark .scrollbar-thin::-webkit-scrollbar-thumb:hover {
+            background: #52525b;
+        }
+
+        /* Toggle switch — shadcn Switch style */
+        .toggle-track {
+            transition: background-color 0.15s ease;
+        }
+        .toggle-track::after {
+            content: '';
+            position: absolute;
+            top: 2px;
+            left: 2px;
+            width: 16px;
+            height: 16px;
+            border-radius: 9999px;
+            background: white;
+            box-shadow: 0 1px 2px rgba(0,0,0,0.1);
+            transition: transform 0.15s cubic-bezier(0.16, 1, 0.3, 1);
+        }
+        .peer:checked ~ .toggle-track {
+            background-color: #18181b;
+        }
+        .dark .peer:checked ~ .toggle-track {
+            background-color: #fafafa;
+        }
+        .dark .toggle-track::after {
+            background: #18181b;
+        }
+        .dark .peer:checked ~ .toggle-track::after {
+            background: #18181b;
+        }
+        .peer:checked ~ .toggle-track::after {
+            transform: translateX(16px);
+        }
+
+        /* Focus ring */
+        .focus-ring:focus-visible {
+            outline: 2px solid #18181b;
+            outline-offset: 2px;
+        }
+        .dark .focus-ring:focus-visible {
+            outline-color: #d4d4d8;
+        }
+
+        /* Document container */
+        #document-container {
+            background: #f4f4f5;
+        }
+        .dark #document-container {
+            background: #18181b;
+        }
+
+        .dark #document-container .docx-wrapper { background: #18181b; }
+        .dark #document-container section.docx { background: #27272a; color: #e4e4e7; }
+        .dark #document-container section.docx p,
+        .dark #document-container section.docx span,
+        .dark #document-container section.docx td { color: #e4e4e7 !important; }
+        .dark #document-container section.docx table,
+        .dark #document-container section.docx td,
+        .dark #document-container section.docx th { border-color: #52525b !important; background-color: transparent !important; }
+        .dark #document-container .docx-tc-annotation { background: #27272a; color: #e4e4e7; border-color: #52525b; }
+        .dark #document-container .docx-tc-avatar { background: #3f3f46; }
+        .dark #document-container .docx-comment-popover { background: #27272a; color: #e4e4e7; }
+
+        /* Drawer */
+        .drawer-overlay {
+            opacity: 0;
+            pointer-events: none;
+            transition: opacity 0.2s ease;
+        }
+        .drawer-overlay.open {
+            opacity: 1;
+            pointer-events: auto;
+        }
+        .drawer-panel {
+            transform: translateX(100%);
+            transition: transform 0.25s cubic-bezier(0.16, 1, 0.3, 1);
+        }
+        .drawer-panel.open {
+            transform: translateX(0);
+        }
+
+        /* Select styling */
+        select {
+            appearance: none;
+            background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%2371717a' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E");
+            background-repeat: no-repeat;
+            background-position: right 8px center;
+            padding-right: 28px;
+        }
     </style>
 </head>
 
-<body class="vh-100 d-flex flex-column">
-    <div class="hstack bg-black no-print">
-        <a class="mx-auto p-2 text-white" href="https://war.ukraine.ua">Support Ukraine 🇺🇦</a>
-    </div>
+<body class="h-screen flex flex-col bg-white dark:bg-zinc-950 text-zinc-900 dark:text-zinc-50 antialiased">
+    <!-- Navbar -->
+    <header class="border-b border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-950 print:hidden relative">
+        <div class="flex items-center gap-2 px-3 py-2">
 
-    <div class="hstack p-2 gap-2 bg-light no-print">
-
-        <input id="files" type="file" class="form-control" style="width: 50ch;" accept=".docx" />
-        <div class="col-2">
-            <select id="testDocuments" class="form-select">
-                <option disabled selected>-- Test Documents --</option>
+            <!-- Left: file controls -->
+            <label class="cursor-pointer inline-flex items-center h-8 px-3 gap-1.5 rounded-md border border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-950 hover:bg-zinc-100 dark:hover:bg-zinc-800 transition-colors text-xs font-medium focus-within:ring-2 focus-within:ring-zinc-950 dark:focus-within:ring-zinc-300 focus-within:ring-offset-2 dark:focus-within:ring-offset-zinc-950" title="Upload file">
+                <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline stroke-linecap="round" stroke-linejoin="round" points="17 8 12 3 7 8"/><line stroke-linecap="round" x1="12" y1="3" x2="12" y2="15"/></svg>
+                Upload
+                <input type="file" class="sr-only" id="files" accept=".docx" />
+            </label>
+            <select id="testDocuments" class="h-8 px-2.5 rounded-md border border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-950 text-xs focus:ring-2 focus:ring-zinc-950 dark:focus:ring-zinc-300 focus:ring-offset-2 dark:focus:ring-offset-zinc-950 focus:border-transparent transition-colors">
+                <option disabled selected>Test Documents</option>
             </select>
-        </div>
-        <button id="loadButton" class="btn btn-primary px-4">Reload</button>
-        <div class="dropdown">
-            <button class="btn btn-secondary dropdown-toggle" type="button" id="optionsMenuButton"
-                data-bs-toggle="dropdown" aria-expanded="false">
-                Options
+            <button id="loadButton" class="inline-flex items-center justify-center h-8 w-8 rounded-md border border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-950 hover:bg-zinc-100 dark:hover:bg-zinc-800 transition-colors focus-ring" title="Reload">
+                <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M4 4v5h5M20 20v-5h-5M20.49 9A9 9 0 0 0 5.64 5.64L4 4m16 16-1.64-1.64A9 9 0 0 1 3.51 15"/></svg>
             </button>
-            <ul id="optionsMenu" class="dropdown-menu" aria-labelledby="optionsMenuButton">
-            </ul>
+            <button id="saveTestButton" class="inline-flex items-center h-8 px-3 bg-zinc-900 dark:bg-zinc-50 text-zinc-50 dark:text-zinc-900 hover:bg-zinc-800 dark:hover:bg-zinc-200 rounded-md text-xs font-medium transition-colors focus-ring hidden">Save Test</button>
+
+            <div class="flex-1"></div>
+
+            <!-- Center: filename (absolute to truly center) -->
+            <span id="fileName" class="absolute left-1/2 -translate-x-1/2 text-xs text-zinc-500 dark:text-zinc-400 truncate max-w-[300px] pointer-events-none">No file chosen</span>
+
+            <!-- Track change actions (shown when track changes enabled) -->
+            <div id="navTrackChangeActions" class="items-center gap-1" style="display:none">
+                <button id="acceptAllBtn" class="inline-flex items-center h-7 px-2 rounded-md border border-green-200 dark:border-green-900 text-green-700 dark:text-green-400 text-[11px] font-medium hover:bg-green-50 dark:hover:bg-green-950 disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:bg-transparent transition-colors" disabled>Accept All</button>
+                <button id="rejectAllBtn" class="inline-flex items-center h-7 px-2 rounded-md border border-red-200 dark:border-red-900 text-red-700 dark:text-red-400 text-[11px] font-medium hover:bg-red-50 dark:hover:bg-red-950 disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:bg-transparent transition-colors" disabled>Reject All</button>
+                <button id="resetDecisionsBtn" class="inline-flex items-center h-7 px-2 rounded-md border border-zinc-200 dark:border-zinc-700 text-zinc-600 dark:text-zinc-400 text-[11px] font-medium hover:bg-zinc-50 dark:hover:bg-zinc-800 disabled:opacity-40 disabled:cursor-not-allowed hidden transition-colors" disabled>Reset</button>
+            </div>
+
+            <!-- Dark mode toggle -->
+            <button id="darkModeToggle" class="inline-flex items-center justify-center h-8 w-8 rounded-md hover:bg-zinc-100 dark:hover:bg-zinc-800 transition-colors focus-ring" title="Toggle dark mode">
+                <svg class="w-4 h-4 hidden dark:block" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><circle cx="12" cy="12" r="4"/><path d="M12 2v2m0 16v2M4.93 4.93l1.41 1.41m11.32 11.32 1.41 1.41M2 12h2m16 0h2M6.34 17.66l-1.41 1.41M19.07 4.93l-1.41 1.41"/></svg>
+                <svg class="w-4 h-4 block dark:hidden" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M12 3a6 6 0 0 0 9 9 9 9 0 1 1-9-9Z"/></svg>
+            </button>
+
+            <!-- Right: settings -->
+            <div id="optionsDropdownContainer">
+                <button id="optionsButton" class="inline-flex items-center justify-center h-8 w-8 rounded-md hover:bg-zinc-100 dark:hover:bg-zinc-800 transition-colors focus-ring" title="Settings">
+                    <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.73l-.22.38a2 2 0 0 0 .73 2.73l.15.1a2 2 0 0 1 1 1.72v.51a2 2 0 0 1-1 1.74l-.15.09a2 2 0 0 0-.73 2.73l.22.38a2 2 0 0 0 2.73.73l.15-.08a2 2 0 0 1 2 0l.43.25a2 2 0 0 1 1 1.73V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 2 0l.15.08a2 2 0 0 0 2.73-.73l.22-.39a2 2 0 0 0-.73-2.73l-.15-.08a2 2 0 0 1-1-1.74v-.5a2 2 0 0 1 1-1.74l.15-.09a2 2 0 0 0 .73-2.73l-.22-.38a2 2 0 0 0-2.73-.73l-.15.08a2 2 0 0 1-2 0l-.43-.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2z"/><circle cx="12" cy="12" r="3"/></svg>
+                </button>
+            </div>
         </div>
-        <button id="saveTestButton" class="btn btn-primary px-4" style="display: none">Save Test</button>
+    </header>
+
+    <!-- Main content -->
+    <div class="flex flex-1 min-h-0">
+        <!-- Document container -->
+        <main id="document-container" class="flex-1 h-full overflow-auto scrollbar-thin"></main>
     </div>
 
-    <div class="flex-grow-1 d-flex flex-row" style="height: 0;">
-        <details class="docx-thumbnails h-100 no-print">
-            <summary></summary>
-            <div id="thumbnails-container" class="docx-thumbnails-container"></div>
-        </details>
-        <div id="document-container" class="overflow-auto flex-grow-1 h-100"></div>
-    </div>
+    <!-- Settings drawer -->
+    <div id="drawerOverlay" class="drawer-overlay fixed inset-0 bg-black/40 z-40"></div>
+    <aside id="drawerPanel" class="drawer-panel fixed top-0 right-0 h-full w-80 bg-white dark:bg-zinc-950 border-l border-zinc-200 dark:border-zinc-800 z-50 flex flex-col shadow-xl">
+        <div class="flex items-center justify-between px-5 py-3 border-b border-zinc-200 dark:border-zinc-800">
+            <h2 class="text-sm font-semibold">Settings</h2>
+            <button id="drawerClose" class="inline-flex items-center justify-center h-7 w-7 rounded-md hover:bg-zinc-100 dark:hover:bg-zinc-800 transition-colors">
+                <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M18 6 6 18M6 6l12 12"/></svg>
+            </button>
+        </div>
+        <div class="flex-1 overflow-y-auto scrollbar-thin">
+
+            <!-- Display -->
+            <div class="px-5 py-4 border-b border-zinc-100 dark:border-zinc-800/50">
+                <h3 class="text-[11px] font-semibold uppercase tracking-wider text-zinc-400 dark:text-zinc-500 mb-3">Display</h3>
+                <label class="flex items-center justify-between cursor-pointer select-none">
+                    <span class="text-sm text-zinc-700 dark:text-zinc-300">Page breaks</span>
+                    <div class="relative">
+                        <input type="checkbox" id="pageBreaksToggle" class="sr-only peer" checked>
+                        <div class="toggle-track w-9 h-5 bg-zinc-200 dark:bg-zinc-700 rounded-full"></div>
+                    </div>
+                </label>
+            </div>
+
+            <!-- Track Changes -->
+            <div class="px-5 py-4 border-b border-zinc-100 dark:border-zinc-800/50">
+                <h3 class="text-[11px] font-semibold uppercase tracking-wider text-zinc-400 dark:text-zinc-500 mb-3">Track Changes</h3>
+                <div class="space-y-3">
+                    <label class="flex items-center justify-between cursor-pointer select-none">
+                        <span class="text-sm text-zinc-700 dark:text-zinc-300">Show changes</span>
+                        <div class="relative">
+                            <input type="checkbox" id="trackChangesToggle" class="sr-only peer">
+                            <div class="toggle-track w-9 h-5 bg-zinc-200 dark:bg-zinc-700 rounded-full"></div>
+                        </div>
+                    </label>
+                    <div class="flex items-center justify-between">
+                        <span class="text-sm text-zinc-700 dark:text-zinc-300">Mode</span>
+                        <select id="trackChangesMode" class="h-8 px-2.5 rounded-md border border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-950 text-xs focus:ring-2 focus:ring-zinc-950 dark:focus:ring-zinc-300 focus:ring-offset-2 dark:focus:ring-offset-zinc-950 focus:border-transparent disabled:opacity-40 disabled:cursor-not-allowed transition-colors" disabled>
+                            <option value="inline">Inline</option>
+                            <option value="margin">Margin</option>
+                            <option value="floating">Floating</option>
+                        </select>
+                    </div>
+                    <label class="flex items-center justify-between cursor-pointer select-none">
+                        <span class="text-sm text-zinc-700 dark:text-zinc-300">Accept / Reject buttons</span>
+                        <div class="relative">
+                            <input type="checkbox" id="showButtonsToggle" class="sr-only peer" checked>
+                            <div class="toggle-track w-9 h-5 bg-zinc-200 dark:bg-zinc-700 rounded-full"></div>
+                        </div>
+                    </label>
+                </div>
+            </div>
+
+            <!-- Comments -->
+            <div class="px-5 py-4 border-b border-zinc-100 dark:border-zinc-800/50">
+                <h3 class="text-[11px] font-semibold uppercase tracking-wider text-zinc-400 dark:text-zinc-500 mb-3">Comments</h3>
+                <div class="space-y-3">
+                    <label class="flex items-center justify-between cursor-pointer select-none">
+                        <span class="text-sm text-zinc-700 dark:text-zinc-300">Show comments</span>
+                        <div class="relative">
+                            <input type="checkbox" id="commentsToggle" class="sr-only peer">
+                            <div class="toggle-track w-9 h-5 bg-zinc-200 dark:bg-zinc-700 rounded-full"></div>
+                        </div>
+                    </label>
+                    <div class="flex items-center justify-between">
+                        <span class="text-sm text-zinc-700 dark:text-zinc-300">Mode</span>
+                        <select id="commentsMode" class="h-8 px-2.5 rounded-md border border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-950 text-xs focus:ring-2 focus:ring-zinc-950 dark:focus:ring-zinc-300 focus:ring-offset-2 dark:focus:ring-offset-zinc-950 focus:border-transparent disabled:opacity-40 disabled:cursor-not-allowed transition-colors" disabled>
+                            <option value="inline">Inline</option>
+                            <option value="margin">Margin</option>
+                            <option value="floating">Floating</option>
+                        </select>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Advanced -->
+            <div class="px-5 py-4">
+                <h3 class="text-[11px] font-semibold uppercase tracking-wider text-zinc-400 dark:text-zinc-500 mb-3">Advanced</h3>
+                <div id="optionsMenu" class="space-y-0.5 -mx-5">
+                </div>
+            </div>
+
+        </div>
+    </aside>
 
     <script>
+        // Dark mode initialization
+        const darkModeToggle = document.getElementById('darkModeToggle');
+
+        if (localStorage.getItem('darkMode') === 'true' ||
+            (!localStorage.getItem('darkMode') && window.matchMedia('(prefers-color-scheme: dark)').matches)) {
+            document.documentElement.classList.add('dark');
+        }
+
+        darkModeToggle.addEventListener('click', () => {
+            document.documentElement.classList.toggle('dark');
+            localStorage.setItem('darkMode', document.documentElement.classList.contains('dark'));
+        });
+
+        // Settings drawer
+        const optionsButton = document.getElementById('optionsButton');
+        const optionsMenu = document.getElementById('optionsMenu');
+        const optionsContainer = document.getElementById('optionsDropdownContainer');
+        const drawerOverlay = document.getElementById('drawerOverlay');
+        const drawerPanel = document.getElementById('drawerPanel');
+        const drawerClose = document.getElementById('drawerClose');
+
+        function openDrawer() {
+            drawerOverlay.classList.add('open');
+            drawerPanel.classList.add('open');
+        }
+        function closeDrawer() {
+            drawerOverlay.classList.remove('open');
+            drawerPanel.classList.remove('open');
+        }
+
+        optionsButton.addEventListener('click', openDrawer);
+        drawerOverlay.addEventListener('click', closeDrawer);
+        drawerClose.addEventListener('click', closeDrawer);
+        document.addEventListener('keydown', (e) => {
+            if (e.key === 'Escape') closeDrawer();
+        });
+
+        // File input name display
+        const fileInput = document.querySelector("#files");
+        const fileNameDisplay = document.getElementById('fileName');
+
+        fileInput.addEventListener("change", () => {
+            if (fileInput.files.length > 0) {
+                fileNameDisplay.textContent = fileInput.files[0].name;
+                fileNameDisplay.title = fileInput.files[0].name;
+            } else {
+                fileNameDisplay.textContent = 'No file chosen';
+                fileNameDisplay.title = '';
+            }
+        });
+
+        // Document rendering
         let currentDocument = null;
+        let parsedDocument = null;
         const docxOptions = Object.assign({}, docx.defaultOptions, {
             debug: true,
             experimental: true,
             hideWrapperOnPrint: true,
+            renderChanges: false,
+            trackChangesMode: 'inline',
+            trackChangeDecisions: {},
+            breakPages: true,
+            ignoreLastRenderedPageBreak: false,  // Show page breaks from Word's layout
+            onTrackChangeDecision: function(id, decision) {
+                docxOptions.trackChangeDecisions[id] = decision;
+                queueDecisionRender();
+            }
         });
 
         const container = document.querySelector("#document-container");
-        const fileInput = document.querySelector("#files");
         const loadButton = document.querySelector("#loadButton");
         const testDocuments = document.querySelector("#testDocuments");
+        const trackChangesToggle = document.querySelector("#trackChangesToggle");
+        const trackChangesModeSelect = document.querySelector("#trackChangesMode");
+        const commentsToggle = document.querySelector("#commentsToggle");
+        const commentsModeSelect = document.querySelector("#commentsMode");
+        const pageBreaksToggle = document.querySelector("#pageBreaksToggle");
+        const acceptAllBtn = document.querySelector("#acceptAllBtn");
+        const rejectAllBtn = document.querySelector("#rejectAllBtn");
+        const resetDecisionsBtn = document.querySelector("#resetDecisionsBtn");
 
+        const navTrackChangeActions = document.querySelector("#navTrackChangeActions");
+        const showButtonsToggle = document.querySelector("#showButtonsToggle");
+
+        function updateTrackChangeButtons() {
+            const enabled = trackChangesToggle.checked;
+            const showButtons = showButtonsToggle.checked;
+            navTrackChangeActions.style.display = (enabled && showButtons) ? 'flex' : 'none';
+            acceptAllBtn.disabled = !enabled;
+            rejectAllBtn.disabled = !enabled;
+            const hasDecisions = Object.keys(docxOptions.trackChangeDecisions).length > 0;
+            resetDecisionsBtn.classList.toggle('hidden', !hasDecisions || !enabled);
+            resetDecisionsBtn.disabled = !enabled;
+        }
+
+        let decisionRenderQueued = false;
+        function queueDecisionRender() {
+            if (decisionRenderQueued) return;
+            decisionRenderQueued = true;
+            queueMicrotask(() => {
+                decisionRenderQueued = false;
+                renderDocx(currentDocument);
+            });
+        }
+
+        let renderVersion = 0;
         async function renderDocx(file) {
-            currentDocument = file; 
+            currentDocument = file;
 
-            if (!currentDocument) 
+            if (!currentDocument)
                 return;
-            
-            // optional, find and convert all tiff images 
-            let docxBlob = await preprocessDocx(currentDocument); 
-            // render document
-            let res = await docx.renderAsync(docxBlob, container, null, docxOptions)
+
+            const version = ++renderVersion;
+            const options = { ...docxOptions, trackChangeDecisions: { ...docxOptions.trackChangeDecisions } };
+            // Keep upstream's optional TIFF/WMF demo preprocessor.
+            const docxBlob = await preprocessDocx(currentDocument);
+            const res = await docx.parseAsync(docxBlob, options);
+            const nodes = await docx.renderDocument(res, options);
+            if (version !== renderVersion) return;
+            container.replaceChildren(...nodes);
+            parsedDocument = res;
             // optional - render thumbnails
             renderThumbnails(container, document.querySelector("#thumbnails-container"));
+            updateTrackChangeButtons();
             console.log(res);
         }
-        
+
         fileInput.addEventListener("change", ev => {
+            docxOptions.trackChangeDecisions = {};
             renderDocx(fileInput.files[0]);
             testDocuments.selectedIndex = 0;
         });
-        loadButton.addEventListener("click", ev => renderDocx(fileInput.files[0]));
+        loadButton.addEventListener("click", ev => renderDocx(currentDocument));
+
+        // Track changes controls
+        trackChangesToggle.addEventListener("change", ev => {
+            docxOptions.renderChanges = trackChangesToggle.checked;
+            trackChangesModeSelect.disabled = !trackChangesToggle.checked;
+            updateTrackChangeButtons();
+            renderDocx(currentDocument);
+        });
+
+        trackChangesModeSelect.addEventListener("change", ev => {
+            docxOptions.trackChangesMode = trackChangesModeSelect.value;
+            renderDocx(currentDocument);
+        });
+
+        acceptAllBtn.addEventListener("click", () => {
+            if (parsedDocument) {
+                docxOptions.trackChangeDecisions = docx.acceptAllChanges(parsedDocument);
+                renderDocx(currentDocument);
+            }
+        });
+
+        rejectAllBtn.addEventListener("click", () => {
+            if (parsedDocument) {
+                docxOptions.trackChangeDecisions = docx.rejectAllChanges(parsedDocument);
+                renderDocx(currentDocument);
+            }
+        });
+
+        resetDecisionsBtn.addEventListener("click", () => {
+            docxOptions.trackChangeDecisions = {};
+            renderDocx(currentDocument);
+        });
+
+        commentsToggle.addEventListener("change", ev => {
+            docxOptions.renderComments = commentsToggle.checked;
+            commentsModeSelect.disabled = !commentsToggle.checked;
+            renderDocx(currentDocument);
+        });
+
+        commentsModeSelect.addEventListener("change", ev => {
+            docxOptions.commentsMode = commentsModeSelect.value;
+            renderDocx(currentDocument);
+        });
+
+        pageBreaksToggle.addEventListener("change", ev => {
+            docxOptions.breakPages = pageBreaksToggle.checked;
+            renderDocx(currentDocument);
+        });
+
+        showButtonsToggle.addEventListener("change", ev => {
+            docxOptions.showTrackChangeButtons = showButtonsToggle.checked;
+            updateTrackChangeButtons();
+            renderDocx(currentDocument);
+        });
 
         const menu = document.querySelector("#optionsMenu");
 
-        Object.keys(docxOptions).filter(key => !/^(className|h)$/i.test(key)).forEach(function(key) {
-            const listItem = document.createElement("li");
-            listItem.innerHTML = `
-            <div class="dropdown-item">
-                <div class="form-check">
-                    <label class="form-check-label"><input type="checkbox" class="form-check-input" ${docxOptions[key] ? 'checked' : ''}> ${key}</label>
-                </div>
-            </div>`;
+        // Filter to only show boolean options, excluding options that have dedicated controls
+        const excludeOptions = ['className', 'trackChangesMode', 'trackChangesMarginWidth', 'commentsMode', 'renderChanges', 'renderComments', 'breakPages', 'ignoreLastRenderedPageBreak', 'showTrackChangeButtons'];
+        Object.keys(docxOptions)
+            .filter(key => !excludeOptions.some(exc => key.toLowerCase().includes(exc.toLowerCase())))
+            .filter(key => typeof docxOptions[key] === 'boolean')
+            .forEach(function (key) {
+                const listItem = document.createElement("div");
+                listItem.className = "px-4 py-2 hover:bg-zinc-50 dark:hover:bg-zinc-900 transition-colors";
+                listItem.innerHTML = `
+                <label class="flex items-center justify-between cursor-pointer select-none">
+                    <span class="text-sm text-zinc-700 dark:text-zinc-300">${key}</span>
+                    <input type="checkbox" class="w-4 h-4 accent-zinc-900 dark:accent-zinc-300 rounded" ${docxOptions[key] ? 'checked' : ''}>
+                </label>`;
 
-            const checkInput = listItem.querySelector("input");
+                const checkInput = listItem.querySelector("input");
 
-            checkInput.addEventListener("click", (e) => {
-                docxOptions[key] = checkInput.checked;
-                renderDocx(currentDocument);
+                checkInput.addEventListener("click", (e) => {
+                    docxOptions[key] = checkInput.checked;
+                    renderDocx(currentDocument);
+                });
+
+                menu.appendChild(listItem);
             });
-
-            menu.appendChild(listItem);
-        });
 
         container.addEventListener("dragover", ev => ev.preventDefault());
         container.addEventListener("drop", ev => {
             ev.preventDefault();
             renderDocx(ev.dataTransfer.files[0]);
+            if (ev.dataTransfer.files[0]) {
+                fileNameDisplay.textContent = ev.dataTransfer.files[0].name;
+                fileNameDisplay.title = ev.dataTransfer.files[0].name;
+            }
         });
 
         const selectedTest = new URLSearchParams(location.search).get('test');
 
-        for (let testName of ['text','underlines','text-break','line-spacing','numbering','page-layout','table','table-spans','footnote','header-footer','revision','equation'])
-        {
+        for (let testName of ['text', 'underlines', 'text-break', 'line-spacing', 'numbering', 'page-layout', 'table', 'table-spans', 'footnote', 'header-footer', 'revision', 'equation', 'comments', 'page-break-before', 'header-footer-even-odd-off']) {
             var op = document.createElement("option");
             op.value = testName;
             op.label = testName;
@@ -143,7 +521,7 @@
         tryLoadTest(selectedTest);
 
         document.querySelector("#saveTestButton").addEventListener("click", async () => {
-            const file = await showSaveFilePicker({ types: [ { description: "HTML File", accept: { "text/html": [".html"] } }] });
+            const file = await showSaveFilePicker({ types: [{ description: "HTML File", accept: { "text/html": [".html"] } }] });
             const stream = await file.createWritable();
             await stream.write(container.innerHTML);
             await stream.close();
@@ -151,9 +529,12 @@
 
         async function tryLoadTest(testName) {
             if (testName) {
+                docxOptions.trackChangeDecisions = {};
                 let resp = await fetch(`tests/render-test/${testName}/document.docx`);
                 renderDocx(await resp.blob());
                 fileInput.value = "";
+                fileNameDisplay.textContent = `${testName}/document.docx`;
+                fileNameDisplay.title = `${testName}/document.docx`;
             }
         }
     </script>
