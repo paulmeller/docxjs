@@ -10,6 +10,134 @@
     (global = typeof globalThis !== 'undefined' ? globalThis : global || self, factory(global.docx = {}, global.JSZip));
 })(this, (function (exports, JSZip) { 'use strict';
 
+    function emfToSvgDataUrl(buffer) {
+        try {
+            const buf = new Uint8Array(buffer);
+            const dv = new DataView(buffer);
+            if (dv.getUint32(0, true) !== 1)
+                return null;
+            const headerSize = dv.getUint32(4, true);
+            const boundsL = dv.getInt32(8, true), boundsT = dv.getInt32(12, true);
+            const boundsR = dv.getInt32(16, true), boundsB = dv.getInt32(20, true);
+            let winOrgX = 0, winOrgY = 0, winExtX = boundsR - boundsL, winExtY = boundsB - boundsT;
+            let vpExtX = boundsR - boundsL, vpExtY = boundsB - boundsT;
+            let curX = 0, curY = 0;
+            let pathData = '';
+            let inPath = false;
+            const objects = {};
+            let brushColor = '#000000';
+            const svgPaths = [];
+            let offset = headerSize;
+            while (offset < buf.length - 8) {
+                const type = dv.getUint32(offset, true);
+                const size = dv.getUint32(offset + 4, true);
+                if (size < 8 || offset + size > buf.length)
+                    break;
+                if (type === 14)
+                    break;
+                switch (type) {
+                    case 10:
+                        winOrgX = dv.getInt32(offset + 8, true);
+                        winOrgY = dv.getInt32(offset + 12, true);
+                        break;
+                    case 9:
+                        winExtX = dv.getInt32(offset + 8, true);
+                        winExtY = dv.getInt32(offset + 12, true);
+                        break;
+                    case 11:
+                        vpExtX = dv.getInt32(offset + 8, true);
+                        vpExtY = dv.getInt32(offset + 12, true);
+                        break;
+                    case 27:
+                        curX = dv.getInt32(offset + 8, true);
+                        curY = dv.getInt32(offset + 12, true);
+                        if (inPath)
+                            pathData += `M${curX} ${curY}`;
+                        break;
+                    case 89: {
+                        const cnt = dv.getUint32(offset + 24, true);
+                        let p = offset + 28;
+                        for (let i = 0; i < cnt; i++, p += 4) {
+                            const x = dv.getInt16(p, true), y = dv.getInt16(p + 2, true);
+                            if (inPath)
+                                pathData += `L${x} ${y}`;
+                            curX = x;
+                            curY = y;
+                        }
+                        break;
+                    }
+                    case 88: {
+                        const cnt = dv.getUint32(offset + 24, true);
+                        let p = offset + 28;
+                        for (let i = 0; i + 2 < cnt; i += 3, p += 12) {
+                            const x1 = dv.getInt16(p, true), y1 = dv.getInt16(p + 2, true), x2 = dv.getInt16(p + 4, true), y2 = dv.getInt16(p + 6, true), x3 = dv.getInt16(p + 8, true), y3 = dv.getInt16(p + 10, true);
+                            if (inPath)
+                                pathData += `C${x1} ${y1} ${x2} ${y2} ${x3} ${y3}`;
+                            curX = x3;
+                            curY = y3;
+                        }
+                        break;
+                    }
+                    case 59:
+                        inPath = true;
+                        pathData = '';
+                        break;
+                    case 60:
+                        inPath = false;
+                        break;
+                    case 61:
+                        if (inPath)
+                            pathData += 'Z';
+                        break;
+                    case 62:
+                    case 63:
+                        if (pathData)
+                            svgPaths.push(`<path d="${pathData}" fill="${brushColor}" fill-rule="evenodd"/>`);
+                        pathData = '';
+                        break;
+                    case 64:
+                        if (pathData)
+                            svgPaths.push(`<path d="${pathData}" fill="none" stroke="${brushColor}" stroke-width="1"/>`);
+                        pathData = '';
+                        break;
+                    case 39: {
+                        const ih = dv.getUint32(offset + 8, true), st = dv.getUint32(offset + 12, true);
+                        const r = buf[offset + 16], g = buf[offset + 17], b = buf[offset + 18];
+                        objects[ih] = { type: 'brush', color: st === 0 ? `rgb(${r},${g},${b})` : 'none' };
+                        break;
+                    }
+                    case 37: {
+                        const ih = dv.getUint32(offset + 8, true);
+                        if (ih & 0x80000000) {
+                            const s = ih & 0x7FFFFFFF;
+                            if (s === 0)
+                                brushColor = '#ffffff';
+                            else if (s === 7)
+                                brushColor = '#000000';
+                            else if (s === 5)
+                                brushColor = 'none';
+                        }
+                        else if (objects[ih]?.type === 'brush') {
+                            brushColor = objects[ih].color;
+                        }
+                        break;
+                    }
+                    case 40:
+                        delete objects[dv.getUint32(offset + 8, true)];
+                        break;
+                }
+                offset += size;
+            }
+            if (svgPaths.length === 0)
+                return null;
+            const svg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="${winOrgX} ${winOrgY} ${winExtX} ${winExtY}" width="${vpExtX}" height="${vpExtY}">${svgPaths.join('')}</svg>`;
+            return `data:image/svg+xml;charset=utf-8,${encodeURIComponent(svg)}`;
+        }
+        catch {
+            return null;
+        }
+    }
+
     var RelationshipTypes;
     (function (RelationshipTypes) {
         RelationshipTypes["OfficeDocument"] = "http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument";
@@ -770,6 +898,13 @@
         DomType["MmlBar"] = "mmlBar";
         DomType["MmlGroupChar"] = "mmlGroupChar";
         DomType["VmlElement"] = "vmlElement";
+        DomType["MoveFrom"] = "moveFrom";
+        DomType["MoveTo"] = "moveTo";
+        DomType["MoveFromRangeStart"] = "moveFromRangeStart";
+        DomType["MoveFromRangeEnd"] = "moveFromRangeEnd";
+        DomType["MoveToRangeStart"] = "moveToRangeStart";
+        DomType["MoveToRangeEnd"] = "moveToRangeEnd";
+        DomType["FormatChange"] = "formatChange";
         DomType["Inserted"] = "inserted";
         DomType["Deleted"] = "deleted";
         DomType["DeletedText"] = "deletedText";
@@ -1201,7 +1336,14 @@
             return part;
         }
         async loadDocumentImage(id, part) {
-            const path = this.getPathById(part ?? this.documentPart, id);
+            const resolvedPart = part ?? this.documentPart;
+            const path = this.getPathById(resolvedPart, id);
+            if (/\.(emf|wmf)$/i.test(path ?? '')) {
+                const buffer = await this._package.load(path, "arraybuffer");
+                const converted = buffer && emfToSvgDataUrl(buffer);
+                if (converted)
+                    return converted;
+            }
             return path ? this.blobToURL(await this._package.load(path, "blob"), path) : null;
         }
         async loadNumberingImage(id) {
@@ -1772,11 +1914,23 @@
         parseChange(type, node, parentParser) {
             return {
                 type,
+                changeType: type,
                 children: parentParser(node)?.children ?? [],
                 id: globalXmlParser.attr(node, "id"),
                 author: globalXmlParser.attr(node, "author"),
                 date: globalXmlParser.attr(node, "date"),
             };
+        }
+        parseFormatChange(node) {
+            const change = this.parseChange(DomType.FormatChange, node, () => null);
+            change.previousStyle = {};
+            const old = globalXmlParser.elements(node)[0];
+            if (old)
+                this.parseDefaultProperties(old, change.previousStyle);
+            change.formatDescription = old
+                ? `Previous: ${globalXmlParser.elements(old).map(p => p.localName + (globalXmlParser.attr(p, "val") ? `: ${globalXmlParser.attr(p, "val")}` : '')).join(', ')}`
+                : 'Formatting changed';
+            return change;
         }
         parseAltChunk(node) {
             return { type: DomType.AltChunk, children: [], id: globalXmlParser.attr(node, "id") };
@@ -1816,6 +1970,16 @@
                     case "sdt":
                         result.children.push(...this.parseSdt(el, e => this.parseParagraph(e).children));
                         break;
+                    case "moveFrom":
+                    case "moveTo":
+                        result.children.push(this.parseChange(el.localName === "moveFrom" ? DomType.MoveFrom : DomType.MoveTo, el, e => this.parseParagraph(e)));
+                        break;
+                    case "moveFromRangeStart":
+                    case "moveFromRangeEnd":
+                    case "moveToRangeStart":
+                    case "moveToRangeEnd":
+                        result.children.push({ type: el.localName, props: { id: globalXmlParser.attr(el, "id"), name: globalXmlParser.attr(el, "name") } });
+                        break;
                     case "ins":
                         result.children.push(this.parseChange(DomType.Inserted, el, e => this.parseParagraph(e)));
                         break;
@@ -1827,6 +1991,9 @@
             return result;
         }
         parseParagraphProperties(elem, paragraph) {
+            const change = globalXmlParser.element(elem, "pPrChange");
+            if (change)
+                paragraph.formatChange = this.parseFormatChange(change);
             this.parseDefaultProperties(elem, paragraph.cssStyle = {}, null, c => {
                 if (parseParagraphProperty(c, paragraph, globalXmlParser))
                     return true;
@@ -2028,6 +2195,9 @@
             return result;
         }
         parseRunProperties(elem, run) {
+            const change = globalXmlParser.element(elem, "rPrChange");
+            if (change)
+                run.formatChange = this.parseFormatChange(change);
             this.parseDefaultProperties(elem, run.cssStyle = {}, null, c => {
                 switch (c.localName) {
                     case "rStyle":
@@ -2909,6 +3079,321 @@
         return classNames.filter(Boolean).join(" ");
     }
 
+    const ANNOTATION_GAP = 8;
+    function computePositions(cardHeights, targets, gap) {
+        let nextTop = 0;
+        const tops = [];
+        for (let i = 0; i < cardHeights.length; i++) {
+            const top = Math.max(targets[i], nextTop);
+            tops.push(top);
+            nextTop = top + cardHeights[i] + gap;
+        }
+        const last = cardHeights.length - 1;
+        return { tops, lastBottom: last < 0 ? 0 : tops[last] + cardHeights[last] };
+    }
+    function fitWithinBounds(cardHeights, targets, gap, availableHeight) {
+        const trial = computePositions(cardHeights, targets, gap);
+        if (trial.lastBottom <= availableHeight)
+            return targets;
+        const adjusted = [...trial.tops];
+        let maxBottom = availableHeight;
+        for (let i = adjusted.length - 1; i >= 0; i--) {
+            if (adjusted[i] + cardHeights[i] > maxBottom) {
+                adjusted[i] = Math.max(0, maxBottom - cardHeights[i]);
+            }
+            maxBottom = adjusted[i] - gap;
+        }
+        return adjusted;
+    }
+
+    class AnnotationRenderer {
+        constructor(options, build) {
+            this.options = options;
+            this.build = build;
+            this.cards = new Map();
+            this.expanded = new WeakSet();
+            this.frame = 0;
+            this.refresh = () => { };
+        }
+        createCard(annotation) {
+            const c = this.options.className;
+            const change = annotation.change;
+            const initials = (change.author || '?').trim().split(/\s+/).slice(0, 2).map(x => x[0]).join('').toUpperCase();
+            const labels = { inserted: 'Inserted', deleted: 'Deleted', moveFrom: 'Moved from', moveTo: 'Moved to', formatChange: 'Formatting', comment: 'Comment', replaced: 'Replaced' };
+            const card = this.build({ tagName: 'div', className: `${c}-tc-annotation ${c}-tc-annotation-${annotation.kind}`, tabIndex: 0,
+                children: [
+                    { tagName: 'span', className: `${c}-tc-avatar`, children: [initials] },
+                    { tagName: 'div', className: `${c}-tc-body`, children: [
+                            { tagName: 'strong', children: [change.author || 'Unknown author'] },
+                            { tagName: 'time', dateTime: change.date, children: [change.date || ''] },
+                            { tagName: 'div', className: `${c}-tc-preview`, children: [`${labels[annotation.kind] || annotation.kind}: ${annotation.text}`] }
+                        ] }
+                ] });
+            const buttons = annotation.kind !== 'comment' && changeButtons(this.options, this.build, annotation.ids || [change.id]);
+            if (buttons)
+                card.lastElementChild.appendChild(buttons);
+            card.dataset.tcId = change.id;
+            card.setAttribute('aria-label', `${labels[annotation.kind]} by ${change.author}: ${annotation.text}`);
+            const select = () => {
+                const active = card.classList.toggle(`${c}-tc-active`);
+                card.setAttribute('aria-expanded', String(active));
+                if (active)
+                    annotation.anchor.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                this.schedule();
+            };
+            card.onclick = select;
+            card.onkeydown = event => {
+                if (event.target === card && (event.key === 'Enter' || event.key === ' ')) {
+                    event.preventDefault();
+                    select();
+                }
+            };
+            this.cards.set(card, annotation);
+            return card;
+        }
+        mount(pages, annotations) {
+            const grouped = [];
+            const used = new Set();
+            for (const a of annotations) {
+                if (used.has(a))
+                    continue;
+                const partner = annotations.find(b => b !== a && !used.has(b) && a.mode === b.mode && a.change.author === b.change.author
+                    && ((a.kind === 'inserted' && b.kind === 'deleted') || (a.kind === 'deleted' && b.kind === 'inserted'))
+                    && (this.adjacent(a.anchor, b.anchor) || this.adjacent(b.anchor, a.anchor)));
+                if (partner) {
+                    used.add(partner);
+                    const ins = a.kind === 'inserted' ? a : partner;
+                    const del = a.kind === 'deleted' ? a : partner;
+                    grouped.push({ ...ins, kind: 'replaced', ids: [del.change.id, ins.change.id], text: `${del.text} → ${ins.text}` });
+                }
+                else
+                    grouped.push(a);
+                used.add(a);
+            }
+            for (const annotation of grouped) {
+                const page = pages.find(p => p.contains(annotation.anchor));
+                if (page)
+                    this.panel(page, annotation.mode).appendChild(this.createCard(annotation));
+            }
+            let connected = false;
+            const refresh = () => {
+                if (!pages.some(p => p.isConnected)) {
+                    if (connected) {
+                        this.observer?.disconnect();
+                        this.cards.clear();
+                    }
+                    return;
+                }
+                connected = true;
+                if (this.options.breakPages && !this.options.ignoreHeight)
+                    this.splitPages(pages);
+                for (const [card, annotation] of this.cards) {
+                    const page = pages.find(p => p.contains(annotation.anchor));
+                    if (page) {
+                        const panel = this.panel(page, annotation.mode);
+                        if (card.parentElement !== panel)
+                            panel.appendChild(card);
+                    }
+                }
+                for (const page of pages) {
+                    for (const panel of Array.from(page.querySelectorAll(':scope > [data-annotation-panel]')))
+                        this.layout(panel, page);
+                }
+            };
+            this.refresh = refresh;
+            if (typeof ResizeObserver !== 'undefined') {
+                this.observer = new ResizeObserver(() => this.schedule());
+                pages.forEach(p => this.observer.observe(p));
+                this.cards.forEach((_, card) => this.observer.observe(card));
+            }
+            this.schedule();
+            globalThis.document?.fonts?.ready.then(() => this.schedule());
+        }
+        schedule() {
+            if (!this.frame)
+                this.frame = requestAnimationFrame(() => { this.frame = 0; this.refresh(); });
+        }
+        adjacent(a, b) {
+            let next = a.nextSibling;
+            while (next?.nodeType === 3 && !next.textContent.trim())
+                next = next.nextSibling;
+            return next === b;
+        }
+        panel(page, mode) {
+            let panel = page.querySelector(`:scope > [data-annotation-panel="${mode}"]`);
+            if (panel)
+                return panel;
+            panel = this.build({ tagName: 'aside', className: `${this.options.className}-track-changes-${mode}` });
+            panel.dataset.annotationPanel = mode;
+            panel.setAttribute('aria-label', 'Annotations');
+            const cs = getComputedStyle(page);
+            panel.style.top = page.style.paddingTop || cs.paddingTop;
+            panel.style.width = this.options.trackChangesMarginWidth;
+            if (mode === 'margin') {
+                const right = page.style.paddingRight || cs.paddingRight;
+                if (page.style.width || cs.width)
+                    page.style.width = `calc(${page.style.width || cs.width} + ${this.options.trackChangesMarginWidth} + 16px)`;
+                page.style.paddingRight = `calc(${right} + ${this.options.trackChangesMarginWidth} + 16px)`;
+                panel.style.right = right;
+            }
+            else {
+                panel.style.left = 'calc(100% + 16px)';
+            }
+            page.style.overflow = 'visible';
+            page.appendChild(panel);
+            return panel;
+        }
+        layout(panel, page) {
+            const cards = Array.from(panel.children).filter(el => this.cards.has(el));
+            if (!cards.length)
+                return;
+            panel.querySelector('[data-expand-annotations]')?.remove();
+            panel.style.maxHeight = '';
+            panel.style.overflowY = '';
+            cards.forEach(card => { card.hidden = false; card.style.position = 'absolute'; card.style.top = '0px'; });
+            const zoom = page.offsetWidth ? page.getBoundingClientRect().width / page.offsetWidth : 1;
+            const top = panel.getBoundingClientRect().top;
+            cards.sort((a, b) => this.cards.get(a).anchor.getBoundingClientRect().top - this.cards.get(b).anchor.getBoundingClientRect().top);
+            const targets = cards.map(card => Math.max(0, (this.cards.get(card).anchor.getBoundingClientRect().top - top) / (zoom || 1)));
+            const available = page.clientHeight - panel.offsetTop - (parseFloat(getComputedStyle(page).paddingBottom) || 0);
+            if (available <= 0)
+                return;
+            let heights = cards.map(card => card.offsetHeight);
+            const place = () => {
+                const trial = computePositions(heights, targets, ANNOTATION_GAP);
+                const desired = cards.length > 3 && trial.lastBottom > available ? targets.map(() => 0) : targets;
+                const fitted = fitWithinBounds(heights, desired, ANNOTATION_GAP, available);
+                const positions = computePositions(heights, fitted, ANNOTATION_GAP);
+                cards.forEach((card, i) => card.style.top = `${positions.tops[i]}px`);
+                return positions;
+            };
+            let positions = place();
+            heights = cards.map(card => card.offsetHeight);
+            positions = place();
+            panel.style.height = `${Math.min(available, positions.lastBottom)}px`;
+            if (positions.lastBottom > available) {
+                if (this.expanded.has(panel)) {
+                    panel.style.maxHeight = `${available}px`;
+                    panel.style.overflowY = 'auto';
+                    const button = this.build({ tagName: 'button', type: 'button', children: ['Collapse annotations'], onclick: () => { this.expanded.delete(panel); this.schedule(); } });
+                    button.dataset.expandAnnotations = '';
+                    button.style.cssText = 'position:sticky;top:0;height:32px;width:100%;z-index:3';
+                    panel.appendChild(button);
+                }
+                else {
+                    let visible = 0;
+                    cards.forEach((card, i) => { card.hidden = positions.tops[i] + heights[i] > available - 32; if (!card.hidden)
+                        visible++; });
+                    const button = this.build({ tagName: 'button', type: 'button', children: [`Show ${cards.length - visible} more annotations`], onclick: () => { this.expanded.add(panel); this.schedule(); } });
+                    button.dataset.expandAnnotations = '';
+                    button.style.cssText = `position:absolute;top:${Math.max(0, available - 32)}px;height:32px;width:100%`;
+                    panel.appendChild(button);
+                }
+            }
+        }
+        splitPages(pages) {
+            for (let i = 0; i < pages.length; i++) {
+                const page = pages[i];
+                const articles = page.querySelectorAll(':scope > article');
+                if (articles.length !== 1)
+                    continue;
+                const article = articles[0];
+                const children = Array.from(article.children);
+                if (children.length < 2)
+                    continue;
+                const cs = getComputedStyle(page);
+                const height = parseFloat(cs.minHeight);
+                const zoom = page.offsetWidth ? page.getBoundingClientRect().width / page.offsetWidth : 1;
+                if (!height || page.getBoundingClientRect().height / (zoom || 1) <= height + 1)
+                    continue;
+                let other = 0;
+                for (const el of Array.from(page.children)) {
+                    if (el !== article && !el.dataset.annotationPanel)
+                        other += el.offsetHeight;
+                }
+                const available = height - parseFloat(cs.paddingTop) - parseFloat(cs.paddingBottom) - other;
+                if (available <= 0)
+                    continue;
+                const start = article.getBoundingClientRect().top;
+                const index = children.findIndex((child, n) => n > 0 && (child.getBoundingClientRect().bottom - start) / (zoom || 1) > available);
+                if (index < 1)
+                    continue;
+                const next = page.cloneNode(false);
+                const nextArticle = article.cloneNode(false);
+                for (const el of Array.from(page.children)) {
+                    if (el.tagName === 'HEADER')
+                        next.appendChild(el.cloneNode(true));
+                }
+                next.appendChild(nextArticle);
+                children.slice(index).forEach(child => nextArticle.appendChild(child));
+                for (const el of Array.from(page.children)) {
+                    if (el.tagName === 'FOOTER')
+                        next.appendChild(el.cloneNode(true));
+                    if (el.dataset.annotationPanel)
+                        next.appendChild(el.cloneNode(false));
+                }
+                page.after(next);
+                pages.splice(i + 1, 0, next);
+                this.observer?.observe(next);
+            }
+        }
+    }
+    function annotationStyle(c) {
+        return `
+.${c}-track-changes-margin, .${c}-track-changes-floating { position:absolute; box-sizing:border-box; font:12px/1.4 -apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif; z-index:2; }
+.${c}-tc-annotation { box-sizing:border-box; width:100%; padding:10px; background:#fff; color:#374151; border:1px solid #e5e7eb; border-left:3px solid #22a06b; border-radius:6px; display:flex; gap:8px; cursor:pointer; font:12px/1.4 -apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif !important; }
+.${c}-tc-annotation[hidden] { display:none; }
+.${c}-tc-annotation * { font-family:inherit !important; font-size:12px !important; }
+.${c}-tc-annotation-deleted { border-left-color:#dc3545; }
+.${c}-tc-annotation-moveFrom, .${c}-tc-annotation-moveTo { border-left-color:#805ad5; }
+.${c}-tc-annotation-comment { border-left-color:#e0a020; }
+.${c}-tc-annotation-formatChange { border-left-color:#3182ce; }
+.${c}-tc-avatar { flex:0 0 24px; height:24px; border-radius:50%; background:#edf2f7; text-align:center; line-height:24px; font-size:10px !important; }
+.${c}-tc-body { min-width:0; flex:1; }
+.${c}-tc-body strong { font-size:12px !important; font-weight:600; }
+.${c}-tc-body time { display:block; color:#6b7280; font-size:11px !important; }
+.${c}-tc-preview { margin-top:4px; font-size:12px !important; max-height:5.6em; overflow:hidden; overflow-wrap:anywhere; }
+.${c}-tc-active .${c}-tc-preview { max-height:none; }
+.${c}-tc-active, .${c}-tc-annotation:focus-visible { outline:2px solid #90cdf4; }
+.${c}-tc-inserted, .${c}-tc-moveTo { background:#e6f7ed; }
+.${c}-tc-deleted, .${c}-tc-moveFrom { background:#fde8e8; text-decoration:line-through; }
+@media print { .${c}-track-changes-floating { display:none; } }
+`;
+    }
+    function changeButtons(options, build, ids) {
+        if (!options.showTrackChangeButtons || !options.onTrackChangeDecision)
+            return null;
+        return build({ tagName: 'span', className: `${options.className}-tc-actions`, children: ['accept', 'reject'].map((decision) => ({
+                tagName: 'button', type: 'button', title: `${decision === 'accept' ? 'Accept' : 'Reject'} change`,
+                children: [decision === 'accept' ? 'Accept' : 'Reject'],
+                onclick: (event) => {
+                    event.stopPropagation();
+                    ids.forEach(id => options.onTrackChangeDecision(id, decision));
+                }
+            })) });
+    }
+
+    function changeVisibility(change, decision, renderChanges) {
+        const removed = change.type === DomType.Deleted || change.type === DomType.MoveFrom;
+        if (decision === 'accept')
+            return removed ? 'hidden' : 'content';
+        if (decision === 'reject')
+            return removed ? 'content' : 'hidden';
+        return renderChanges ? 'revision' : removed ? 'hidden' : 'content';
+    }
+    function collectChangeIds(element, ids) {
+        if (!element)
+            return;
+        if ([DomType.Inserted, DomType.Deleted, DomType.MoveFrom, DomType.MoveTo, DomType.FormatChange].includes(element.type)) {
+            const id = element.id;
+            if (id != null)
+                ids.add(id);
+        }
+        if (element.formatChange)
+            collectChangeIds(element.formatChange, ids);
+        element.children?.forEach(child => collectChangeIds(child, ids));
+    }
+
     class HtmlRenderer {
         constructor() {
             this.className = "docx";
@@ -2926,6 +3411,8 @@
             this.commentMap = {};
             this.tasks = [];
             this.postRenderTasks = [];
+            this.annotations = [];
+            this.includeDeletedText = 0;
             this.h = h;
         }
         async render(document, options) {
@@ -2936,6 +3423,8 @@
             this.h = options.h ?? h;
             this.styleMap = null;
             this.tasks = [];
+            this.annotations = [];
+            this.includeDeletedText = 0;
             if (this.options.renderComments && globalThis.Highlight) {
                 this.commentHighlight = new Highlight();
             }
@@ -2975,6 +3464,9 @@
             this.postRenderTasks.forEach(t => t());
             await Promise.allSettled(this.tasks);
             this.refreshTabStops();
+            if (this.annotations.length) {
+                new AnnotationRenderer(options, this.h).mount(sectionElements, this.annotations);
+            }
             return result;
         }
         renderTheme(themePart) {
@@ -3271,8 +3763,10 @@
             let prev;
             const result = [current];
             for (let s of sections) {
+                if (this.isPageBreakSection(prev, s.sectProps))
+                    result.push(current = []);
                 current.push(s);
-                if (this.options.ignoreLastRenderedPageBreak || s.pageBreak || this.isPageBreakSection(prev, s.sectProps))
+                if (this.options.ignoreLastRenderedPageBreak || s.pageBreak)
                     result.push(current = []);
                 prev = s.sectProps;
             }
@@ -3301,6 +3795,10 @@ section.${c}>footer { z-index: 1; }
 .${c} a { color: inherit; text-decoration: inherit; }
 .${c} svg { fill: transparent; }
 `;
+            if ((this.options.renderChanges && this.options.trackChangesMode !== 'inline')
+                || (this.options.renderComments && this.options.commentsMode !== 'inline')) {
+                styleText += annotationStyle(c);
+            }
             if (this.options.renderComments) {
                 styleText += `
 .${c}-comment-ref { cursor: default; }
@@ -3503,8 +4001,10 @@ section.${c}>footer { z-index: 1; }
                     return this.renderMmlBar(elem);
                 case DomType.MmlEquationArray:
                     return this.renderMllList(elem);
+                case DomType.MoveTo:
                 case DomType.Inserted:
                     return this.renderInserted(elem);
+                case DomType.MoveFrom:
                 case DomType.Deleted:
                     return this.renderDeleted(elem);
                 case DomType.CommentRangeStart:
@@ -3581,6 +4081,13 @@ section.${c}>footer { z-index: 1; }
             var comment = this.document.commentsPart?.commentMap[commentRef.id];
             if (!comment)
                 return null;
+            if (this.options.commentsMode !== 'inline') {
+                const anchor = this.h({ tagName: 'span', className: `${this.className}-comment-ref`, children: ['💬'] });
+                const content = this.renderElements(comment.children);
+                this.annotations.push({ change: { ...comment, id: `comment-${comment.id}` }, kind: 'comment', anchor,
+                    text: content.map(n => n.textContent).join(''), mode: this.options.commentsMode });
+                return anchor;
+            }
             const commentRefEl = this.h({ tagName: "span", className: `${this.className}-comment-ref`, children: ['💬'] });
             const commentsContainerEl = this.h({
                 tagName: "div", className: `${this.className}-comment-popover`, children: [
@@ -3633,25 +4140,46 @@ section.${c}>footer { z-index: 1; }
             return this.h(elem.text);
         }
         renderDeletedText(elem) {
-            return this.options.renderChanges ? this.renderText(elem) : null;
+            return this.options.renderChanges || this.includeDeletedText ? this.renderText(elem) : null;
         }
         renderBreak(elem) {
             return elem.break == "textWrapping" ? this.h({ tagName: "br" }) : null;
         }
         renderInserted(elem) {
-            if (this.options.renderChanges)
-                return this.renderChange(elem, "ins");
-            return this.renderElements(elem.children);
+            return this.renderRevision(elem, "ins");
         }
         renderDeleted(elem) {
-            if (this.options.renderChanges)
-                return this.renderChange(elem, "del");
-            return null;
+            return this.renderRevision(elem, "del");
+        }
+        renderRevision(elem, tag) {
+            const visibility = changeVisibility(elem, this.options.trackChangeDecisions?.[elem.id], this.options.renderChanges);
+            if (visibility === 'hidden')
+                return null;
+            if (visibility === 'revision')
+                return this.renderChange(elem, tag);
+            this.includeDeletedText++;
+            try {
+                return this.renderElements(elem.children);
+            }
+            finally {
+                this.includeDeletedText--;
+            }
         }
         renderChange(elem, tag) {
-            return this.renderContainer(elem, tag, {
-                dateTime: elem.date
-            });
+            const mode = this.options.trackChangesMode;
+            const kind = elem.changeType || (tag === 'ins' ? 'inserted' : 'deleted');
+            const anchor = this.renderContainer(elem, tag, { dateTime: elem.date });
+            if (mode !== 'inline') {
+                anchor.classList.add(`${this.className}-tc-${kind}`);
+                anchor.dataset.tcId = elem.id;
+                this.annotations.push({ change: elem, kind, anchor, text: anchor.textContent, mode });
+            }
+            if (mode === 'inline') {
+                const buttons = changeButtons(this.options, this.h, [elem.id]);
+                if (buttons)
+                    return [anchor, buttons];
+            }
+            return anchor;
         }
         renderSymbol(elem) {
             return this.h({ tagName: "span", children: [String.fromCharCode(elem.char)], style: { fontFamily: elem.font } });
@@ -3745,6 +4273,7 @@ section.${c}>footer { z-index: 1; }
         }
         renderVmlElement(elem) {
             var container = this.h({ ns: ns.svg, tagName: "svg", style: elem.cssStyleText });
+            container.setAttribute("overflow", "hidden");
             const result = this.renderVmlChildElement(elem);
             if (elem.imageHref?.id) {
                 this.tasks.push(this.document?.loadDocumentImage(elem.imageHref.id, this.currentPart)
@@ -3761,6 +4290,9 @@ section.${c}>footer { z-index: 1; }
         renderVmlChildElement(elem) {
             const result = this.createSvgElement(elem.tagName);
             Object.entries(elem.attrs).forEach(([k, v]) => result.setAttribute(k, v));
+            if (elem.tagName === "rect" && elem.children.some(c => c.type === DomType.VmlElement && c.tagName === "foreignObject")) {
+                result.setAttribute("fill", "none");
+            }
             for (let child of elem.children) {
                 if (child.type == DomType.VmlElement) {
                     result.appendChild(this.renderVmlChildElement(child));
@@ -3856,7 +4388,14 @@ section.${c}>footer { z-index: 1; }
             return { ns, tagName, className, lang, style, children: children ?? this.renderElements(elem.children) };
         }
         toHTML(elem, ns, tagName, children = null) {
-            return this.h(this.toH(elem, ns, tagName, children));
+            const decision = elem.formatChange && this.options.trackChangeDecisions?.[elem.formatChange.id];
+            const rendered = decision === 'reject' ? { ...elem, cssStyle: elem.formatChange.previousStyle } : elem;
+            const result = this.h(this.toH(rendered, ns, tagName, children));
+            if (elem.formatChange && decision !== 'accept' && decision !== 'reject' && this.options.renderChanges && this.options.trackChangesMode !== 'inline') {
+                this.annotations.push({ change: elem.formatChange, kind: 'formatChange', anchor: result,
+                    text: elem.formatChange.formatDescription, mode: this.options.trackChangesMode });
+            }
+            return result;
         }
         findStyle(styleName) {
             return styleName && this.styleMap?.[styleName];
@@ -3984,6 +4523,11 @@ section.${c}>footer { z-index: 1; }
         renderChanges: false,
         renderComments: false,
         renderAltChunks: true,
+        trackChangesMode: 'inline',
+        commentsMode: 'inline',
+        trackChangesMarginWidth: '220px',
+        showTrackChangeButtons: true,
+        trackChangeDecisions: {},
         h: h
     };
     function parseAsync(data, userOptions) {
@@ -4007,9 +4551,28 @@ section.${c}>footer { z-index: 1; }
         }
         return doc;
     }
+    function getTrackChangeIds(document) {
+        const ids = new Set();
+        collectChangeIds(document?.documentPart?.body, ids);
+        for (const part of document?.parts ?? []) {
+            collectChangeIds(part.rootElement, ids);
+            for (const note of part.notes ?? [])
+                collectChangeIds(note, ids);
+        }
+        return Array.from(ids);
+    }
+    function acceptAllChanges(document) {
+        return Object.fromEntries(getTrackChangeIds(document).map(id => [id, 'accept']));
+    }
+    function rejectAllChanges(document) {
+        return Object.fromEntries(getTrackChangeIds(document).map(id => [id, 'reject']));
+    }
 
+    exports.acceptAllChanges = acceptAllChanges;
     exports.defaultOptions = defaultOptions;
+    exports.getTrackChangeIds = getTrackChangeIds;
     exports.parseAsync = parseAsync;
+    exports.rejectAllChanges = rejectAllChanges;
     exports.renderAsync = renderAsync;
     exports.renderDocument = renderDocument;
 
