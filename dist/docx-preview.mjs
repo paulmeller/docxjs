@@ -1989,7 +1989,7 @@ class DocumentParser {
     parseParagraphProperties(elem, paragraph) {
         const change = globalXmlParser.element(elem, "pPrChange");
         if (change)
-            paragraph.formatChange = this.parseFormatChange(change);
+            (paragraph.formatChange = this.parseFormatChange(change)).formatKind = 'pPrChange';
         this.parseDefaultProperties(elem, paragraph.cssStyle = {}, null, c => {
             if (parseParagraphProperty(c, paragraph, globalXmlParser))
                 return true;
@@ -2193,7 +2193,7 @@ class DocumentParser {
     parseRunProperties(elem, run) {
         const change = globalXmlParser.element(elem, "rPrChange");
         if (change)
-            run.formatChange = this.parseFormatChange(change);
+            (run.formatChange = this.parseFormatChange(change)).formatKind = 'rPrChange';
         this.parseDefaultProperties(elem, run.cssStyle = {}, null, c => {
             switch (c.localName) {
                 case "rStyle":
@@ -3125,18 +3125,26 @@ class AnnotationRenderer {
                         { tagName: 'div', className: `${c}-tc-preview`, children: [`${labels[annotation.kind] || annotation.kind}: ${annotation.text}`] }
                     ] }
             ] });
-        const buttons = annotation.kind !== 'comment' && changeButtons(this.options, this.build, annotation.ids || [change.id]);
-        if (buttons)
-            card.lastElementChild.appendChild(buttons);
+        const body = card.lastElementChild;
+        if (annotation.members) {
+            const list = this.build({ tagName: 'div', className: `${c}-tc-members` });
+            for (const m of annotation.members) {
+                const row = this.build({ tagName: 'div', className: `${c}-tc-member ${c}-tc-member-${m.kind}`, children: [
+                        { tagName: 'span', className: `${c}-tc-member-text`, children: [`${labels[m.kind] || m.kind}: ${m.text}`] }
+                    ] });
+                this.decorate(row, m);
+                row.onclick = event => { event.stopPropagation(); this.activate(card, m, true); };
+                list.appendChild(row);
+            }
+            body.appendChild(list);
+            card.dataset.tcKeys = JSON.stringify(annotation.members.map(m => m.key));
+        }
+        else if (annotation.kind !== 'comment') {
+            this.decorate(card, annotation, body);
+        }
         card.dataset.tcId = change.id;
         card.setAttribute('aria-label', `${labels[annotation.kind]} by ${change.author}: ${annotation.text}`);
-        const select = () => {
-            const active = card.classList.toggle(`${c}-tc-active`);
-            card.setAttribute('aria-expanded', String(active));
-            if (active)
-                annotation.anchor.scrollIntoView({ behavior: 'smooth', block: 'center' });
-            this.schedule();
-        };
+        const select = () => this.activate(card, annotation.members?.[0] ?? annotation);
         card.onclick = select;
         card.onkeydown = event => {
             if (event.target === card && (event.key === 'Enter' || event.key === ' ')) {
@@ -3146,6 +3154,28 @@ class AnnotationRenderer {
         };
         this.cards.set(card, annotation);
         return card;
+    }
+    decorate(el, a, host = el) {
+        const c = this.options.className;
+        if (a.key != null)
+            el.dataset.tcKey = a.key;
+        else {
+            el.dataset.tcUnmatched = '';
+            host.appendChild(this.build({ tagName: 'div', className: `${c}-tc-undecidable`, children: [this.options.trackChangeUndecidableText] }));
+        }
+        const buttons = changeButtons(this.options, this.build, [{ key: a.key, record: a.record }]);
+        if (buttons)
+            host.appendChild(buttons);
+    }
+    activate(card, target, forceOn = false) {
+        const c = this.options.className;
+        const active = forceOn ? (card.classList.add(`${c}-tc-active`), true) : card.classList.toggle(`${c}-tc-active`);
+        card.setAttribute('aria-expanded', String(active));
+        if (active)
+            target.anchor.scrollIntoView?.({ behavior: 'smooth', block: 'center' });
+        if (target.record)
+            this.options.onTrackChangeSelect?.(active ? target.key ?? null : null, target.record);
+        this.schedule();
     }
     mount(pages, annotations) {
         const grouped = [];
@@ -3160,7 +3190,8 @@ class AnnotationRenderer {
                 used.add(partner);
                 const ins = a.kind === 'inserted' ? a : partner;
                 const del = a.kind === 'deleted' ? a : partner;
-                grouped.push({ ...ins, kind: 'replaced', ids: [del.change.id, ins.change.id], text: `${del.text} → ${ins.text}` });
+                const first = this.adjacent(a.anchor, partner.anchor) ? a : partner;
+                grouped.push({ ...first, kind: 'replaced', members: first === a ? [a, partner] : [partner, a], text: `${del.text} → ${ins.text}` });
             }
             else
                 grouped.push(a);
@@ -3350,25 +3381,52 @@ function annotationStyle(c) {
 .${c}-tc-body time { display:block; color:#6b7280; font-size:11px !important; }
 .${c}-tc-preview { margin-top:4px; font-size:12px !important; max-height:5.6em; overflow:hidden; overflow-wrap:anywhere; }
 .${c}-tc-active .${c}-tc-preview { max-height:none; }
+.${c}-tc-members { margin-top:6px; display:flex; flex-direction:column; gap:4px; }
+.${c}-tc-member { padding:4px 6px; border-radius:4px; background:#f9fafb; }
+.${c}-tc-member-deleted { border-left:2px solid #dc3545; }
+.${c}-tc-member-inserted { border-left:2px solid #22a06b; }
+.${c}-tc-undecidable { margin-top:4px; color:#92400e; font-style:italic; }
+.${c}-tc-selected { outline:2px solid #3182ce; outline-offset:1px; }
 .${c}-tc-active, .${c}-tc-annotation:focus-visible { outline:2px solid #90cdf4; }
 .${c}-tc-inserted, .${c}-tc-moveTo { background:#e6f7ed; }
 .${c}-tc-deleted, .${c}-tc-moveFrom { background:#fde8e8; text-decoration:line-through; }
 @media print { .${c}-track-changes-floating { display:none; } }
 `;
 }
-function changeButtons(options, build, ids) {
-    if (!options.showTrackChangeButtons || !options.onTrackChangeDecision)
+function changeButtons(options, build, targets) {
+    targets = targets.filter(t => t.key != null);
+    if (!targets.length || !options.showTrackChangeButtons || !options.onTrackChangeDecision)
         return null;
     return build({ tagName: 'span', className: `${options.className}-tc-actions`, children: ['accept', 'reject'].map((decision) => ({
             tagName: 'button', type: 'button', title: `${decision === 'accept' ? 'Accept' : 'Reject'} change`,
             children: [decision === 'accept' ? 'Accept' : 'Reject'],
             onclick: (event) => {
                 event.stopPropagation();
-                ids.forEach(id => options.onTrackChangeDecision(id, decision));
+                targets.forEach(t => options.onTrackChangeDecision(t.key, decision, t.record));
             }
         })) });
 }
+function selectTrackChange(root, key, className = 'docx') {
+    const cls = `${className}-tc-selected`;
+    for (const el of Array.from(root.querySelectorAll('[data-tc-key],[data-tc-keys]'))) {
+        let keys = [];
+        if (el.dataset.tcKeys) {
+            try {
+                keys = JSON.parse(el.dataset.tcKeys);
+            }
+            catch {
+                keys = [];
+            }
+        }
+        else
+            keys = [el.dataset.tcKey];
+        el.classList.toggle(cls, key != null && keys.includes(key));
+    }
+}
 
+function defaultChangeKey(r) {
+    return `${r.part}:${r.wId}:${r.type}#${r.occurrence}`;
+}
 function changeVisibility(change, decision, renderChanges) {
     const removed = change.type === DomType.Deleted || change.type === DomType.MoveFrom;
     if (decision === 'accept')
@@ -3377,17 +3435,90 @@ function changeVisibility(change, decision, renderChanges) {
         return removed ? 'content' : 'hidden';
     return renderChanges ? 'revision' : removed ? 'hidden' : 'content';
 }
-function collectChangeIds(element, ids) {
-    if (!element)
-        return;
-    if ([DomType.Inserted, DomType.Deleted, DomType.MoveFrom, DomType.MoveTo, DomType.FormatChange].includes(element.type)) {
-        const id = element.id;
-        if (id != null)
-            ids.add(id);
+const CHANGE_TYPES = [DomType.Inserted, DomType.Deleted, DomType.MoveFrom, DomType.MoveTo, DomType.FormatChange];
+function recordType(change) {
+    switch (change.type) {
+        case DomType.Inserted: return 'ins';
+        case DomType.Deleted: return 'del';
+        case DomType.MoveFrom: return 'moveFrom';
+        case DomType.MoveTo: return 'moveTo';
+        default: return change.formatKind === 'pPrChange' ? 'pPrChange' : 'rPrChange';
     }
-    if (element.formatChange)
-        collectChangeIds(element.formatChange, ids);
-    element.children?.forEach(child => collectChangeIds(child, ids));
+}
+function changeText(n) {
+    if (!n)
+        return '';
+    let s = '';
+    if ((n.type === DomType.Text || n.type === DomType.DeletedText) && typeof n.text === 'string')
+        s += n.text;
+    else if (n.type === DomType.Tab)
+        s += '\t';
+    else if (n.type === DomType.Break && n.break === 'textWrapping')
+        s += '\n';
+    for (const c of n.children ?? [])
+        s += changeText(c);
+    return s;
+}
+function partName(part, index) {
+    const path = part?.path ?? '';
+    const m = /([A-Za-z]+?)(\d*)\.xml$/.exec(path);
+    const base = m?.[1].toLowerCase();
+    if (base === 'header')
+        return `hdr${m[2] || 1}`;
+    if (base === 'footer')
+        return `ftr${m[2] || 1}`;
+    if (base === 'footnotes')
+        return 'fn';
+    if (base === 'endnotes')
+        return 'en';
+    return base ? `${base}${m[2]}` : `part${index}`;
+}
+function indexTrackChanges(document) {
+    const records = [];
+    const counts = new Map();
+    const visit = (el, part) => {
+        if (!el)
+            return;
+        if (CHANGE_TYPES.includes(el.type)) {
+            const c = el;
+            if (c.id != null) {
+                const type = recordType(c);
+                const k = `${part}\u0000${c.id}\u0000${type}`;
+                const occurrence = counts.get(k) ?? 0;
+                counts.set(k, occurrence + 1);
+                c.part = part;
+                c.occurrence = occurrence;
+                records.push({ part, wId: c.id, type, author: c.author ?? null, date: c.date ?? null,
+                    text: c.type === DomType.FormatChange ? '' : changeText(c), occurrence });
+            }
+        }
+        if (el.formatChange)
+            visit(el.formatChange, part);
+        el.children?.forEach(child => visit(child, part));
+    };
+    visit(document?.documentPart?.body, 'body');
+    (document?.parts ?? []).forEach((part, i) => {
+        const name = partName(part, i);
+        if (part === document.documentPart)
+            return;
+        visit(part.rootElement, name);
+        for (const note of part.notes ?? [])
+            visit(note, name);
+    });
+    return records;
+}
+function recordOf(change) {
+    return { part: change.part, wId: change.id, type: recordType(change), author: change.author ?? null, date: change.date ?? null,
+        text: change.type === DomType.FormatChange ? '' : changeText(change), occurrence: change.occurrence ?? 0 };
+}
+function collectChangeKeys(document, keyOf = defaultChangeKey) {
+    const keys = new Set();
+    for (const r of indexTrackChanges(document)) {
+        const k = keyOf(r);
+        if (k != null)
+            keys.add(k);
+    }
+    return Array.from(keys);
 }
 
 class HtmlRenderer {
@@ -3409,6 +3540,7 @@ class HtmlRenderer {
         this.postRenderTasks = [];
         this.annotations = [];
         this.includeDeletedText = 0;
+        this.changeKeys = new Map();
         this.h = h;
     }
     async render(document, options) {
@@ -3421,6 +3553,8 @@ class HtmlRenderer {
         this.tasks = [];
         this.annotations = [];
         this.includeDeletedText = 0;
+        this.changeKeys = new Map();
+        indexTrackChanges(document);
         if (this.options.renderComments && globalThis.Highlight) {
             this.commentHighlight = new Highlight();
         }
@@ -4147,8 +4281,18 @@ section.${c}>footer { z-index: 1; }
     renderDeleted(elem) {
         return this.renderRevision(elem, "del");
     }
+    changeKey(elem) {
+        if (this.changeKeys.has(elem))
+            return this.changeKeys.get(elem);
+        if (elem.part == null)
+            indexTrackChanges(this.document);
+        const key = (this.options.trackChangeKey ?? defaultChangeKey)(recordOf(elem)) ?? null;
+        this.changeKeys.set(elem, key);
+        return key;
+    }
     renderRevision(elem, tag) {
-        const visibility = changeVisibility(elem, this.options.trackChangeDecisions?.[elem.id], this.options.renderChanges);
+        const key = this.changeKey(elem);
+        const visibility = changeVisibility(elem, key != null ? this.options.trackChangeDecisions?.[key] : undefined, this.options.renderChanges);
         if (visibility === 'hidden')
             return null;
         if (visibility === 'revision')
@@ -4165,13 +4309,22 @@ section.${c}>footer { z-index: 1; }
         const mode = this.options.trackChangesMode;
         const kind = elem.changeType || (tag === 'ins' ? 'inserted' : 'deleted');
         const anchor = this.renderContainer(elem, tag, { dateTime: elem.date });
+        const key = this.changeKey(elem);
+        const record = recordOf(elem);
+        anchor.dataset.tcId = elem.id;
+        anchor.dataset.tcPart = record.part;
+        anchor.dataset.tcType = record.type;
+        anchor.dataset.tcOccurrence = String(record.occurrence);
+        if (key != null)
+            anchor.dataset.tcKey = key;
+        else
+            anchor.dataset.tcUnmatched = '';
         if (mode !== 'inline') {
             anchor.classList.add(`${this.className}-tc-${kind}`);
-            anchor.dataset.tcId = elem.id;
-            this.annotations.push({ change: elem, kind, anchor, text: anchor.textContent, mode });
+            this.annotations.push({ change: elem, kind, anchor, text: anchor.textContent, mode, key, record });
         }
         if (mode === 'inline') {
-            const buttons = changeButtons(this.options, this.h, [elem.id]);
+            const buttons = changeButtons(this.options, this.h, [{ key, record }]);
             if (buttons)
                 return [anchor, buttons];
         }
@@ -4384,12 +4537,14 @@ section.${c}>footer { z-index: 1; }
         return { ns, tagName, className, lang, style, children: children ?? this.renderElements(elem.children) };
     }
     toHTML(elem, ns, tagName, children = null) {
-        const decision = elem.formatChange && this.options.trackChangeDecisions?.[elem.formatChange.id];
+        const formatKey = elem.formatChange ? this.changeKey(elem.formatChange) : null;
+        const decision = formatKey != null ? this.options.trackChangeDecisions?.[formatKey] : undefined;
         const rendered = decision === 'reject' ? { ...elem, cssStyle: elem.formatChange.previousStyle } : elem;
         const result = this.h(this.toH(rendered, ns, tagName, children));
         if (elem.formatChange && decision !== 'accept' && decision !== 'reject' && this.options.renderChanges && this.options.trackChangesMode !== 'inline') {
             this.annotations.push({ change: elem.formatChange, kind: 'formatChange', anchor: result,
-                text: elem.formatChange.formatDescription, mode: this.options.trackChangesMode });
+                text: elem.formatChange.formatDescription, mode: this.options.trackChangesMode,
+                key: formatKey, record: recordOf(elem.formatChange) });
         }
         return result;
     }
@@ -4524,6 +4679,7 @@ const defaultOptions = {
     trackChangesMarginWidth: '220px',
     showTrackChangeButtons: true,
     trackChangeDecisions: {},
+    trackChangeUndecidableText: "Can't match this change",
     h: h
 };
 function parseAsync(data, userOptions) {
@@ -4547,22 +4703,18 @@ async function renderAsync(data, bodyContainer, styleContainer, userOptions) {
     }
     return doc;
 }
-function getTrackChangeIds(document) {
-    const ids = new Set();
-    collectChangeIds(document?.documentPart?.body, ids);
-    for (const part of document?.parts ?? []) {
-        collectChangeIds(part.rootElement, ids);
-        for (const note of part.notes ?? [])
-            collectChangeIds(note, ids);
-    }
-    return Array.from(ids);
+function getTrackChanges(document) {
+    return indexTrackChanges(document);
 }
-function acceptAllChanges(document) {
-    return Object.fromEntries(getTrackChangeIds(document).map(id => [id, 'accept']));
+function getTrackChangeIds(document, keyOf) {
+    return collectChangeKeys(document, keyOf);
 }
-function rejectAllChanges(document) {
-    return Object.fromEntries(getTrackChangeIds(document).map(id => [id, 'reject']));
+function acceptAllChanges(document, keyOf) {
+    return Object.fromEntries(getTrackChangeIds(document, keyOf).map(id => [id, 'accept']));
+}
+function rejectAllChanges(document, keyOf) {
+    return Object.fromEntries(getTrackChangeIds(document, keyOf).map(id => [id, 'reject']));
 }
 
-export { acceptAllChanges, defaultOptions, getTrackChangeIds, parseAsync, rejectAllChanges, renderAsync, renderDocument };
+export { acceptAllChanges, defaultChangeKey, defaultOptions, getTrackChangeIds, getTrackChanges, parseAsync, rejectAllChanges, renderAsync, renderDocument, selectTrackChange };
 //# sourceMappingURL=docx-preview.mjs.map

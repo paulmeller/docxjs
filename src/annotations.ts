@@ -1,5 +1,6 @@
 import { Options, TrackChangesMode } from './docx-preview';
 import { WmlChange } from './document/dom';
+import { TrackChangeRecord } from './track-changes';
 import { h } from './html';
 import { ANNOTATION_GAP, computePositions, fitWithinBounds } from './annotation-layout';
 
@@ -9,8 +10,14 @@ export interface Annotation {
 	anchor: HTMLElement;
 	text: string;
 	mode: TrackChangesMode;
-	ids?: string[];
+	/** Caller key of the change; null means it could not be matched and cannot be decided. */
+	key?: string | null;
+	record?: TrackChangeRecord;
+	/** A grouped ("replaced") card: both member changes, in document order, each decided on its own. */
+	members?: Annotation[];
 }
+
+export interface DecisionTarget { key: string | null; record: TrackChangeRecord }
 
 /** A single layout path for both panels, using layout pixels at every zoom level. */
 export class AnnotationRenderer {
@@ -35,16 +42,24 @@ export class AnnotationRenderer {
 					{ tagName: 'div', className: `${c}-tc-preview`, children: [`${labels[annotation.kind] || annotation.kind}: ${annotation.text}`] }
 				] }
 			] }) as HTMLElement;
-		const buttons = annotation.kind !== 'comment' && changeButtons(this.options, this.build, annotation.ids || [change.id]);
-		if (buttons) card.lastElementChild.appendChild(buttons);
+		const body = card.lastElementChild;
+		if (annotation.members) {
+			const list = this.build({ tagName: 'div', className: `${c}-tc-members` }) as HTMLElement;
+			for (const m of annotation.members) {
+				const row = this.build({ tagName: 'div', className: `${c}-tc-member ${c}-tc-member-${m.kind}`, children: [
+					{ tagName: 'span', className: `${c}-tc-member-text`, children: [`${labels[m.kind] || m.kind}: ${m.text}`] }] }) as HTMLElement;
+				this.decorate(row, m);
+				row.onclick = event => { event.stopPropagation(); this.activate(card, m, true); };
+				list.appendChild(row);
+			}
+			body.appendChild(list);
+			card.dataset.tcKeys = JSON.stringify(annotation.members.map(m => m.key));
+		} else if (annotation.kind !== 'comment') {
+			this.decorate(card, annotation, body);
+		}
 		card.dataset.tcId = change.id;
 		card.setAttribute('aria-label', `${labels[annotation.kind]} by ${change.author}: ${annotation.text}`);
-		const select = () => {
-			const active = card.classList.toggle(`${c}-tc-active`);
-			card.setAttribute('aria-expanded', String(active));
-			if (active) annotation.anchor.scrollIntoView({ behavior: 'smooth', block: 'center' });
-			this.schedule();
-		};
+		const select = () => this.activate(card, annotation.members?.[0] ?? annotation);
 		card.onclick = select;
 		card.onkeydown = event => {
 			if (event.target === card && (event.key === 'Enter' || event.key === ' ')) {
@@ -54,6 +69,27 @@ export class AnnotationRenderer {
 		};
 		this.cards.set(card, annotation);
 		return card;
+	}
+
+	/** Keys, per-change buttons or the "can't match" note for one change (a card or a member row). */
+	private decorate(el: HTMLElement, a: Annotation, host: Element = el) {
+		const c = this.options.className;
+		if (a.key != null) el.dataset.tcKey = a.key;
+		else {
+			el.dataset.tcUnmatched = '';
+			host.appendChild(this.build({ tagName: 'div', className: `${c}-tc-undecidable`, children: [this.options.trackChangeUndecidableText] }));
+		}
+		const buttons = changeButtons(this.options, this.build, [{ key: a.key, record: a.record }]);
+		if (buttons) host.appendChild(buttons);
+	}
+
+	private activate(card: HTMLElement, target: Annotation, forceOn = false) {
+		const c = this.options.className;
+		const active = forceOn ? (card.classList.add(`${c}-tc-active`), true) : card.classList.toggle(`${c}-tc-active`);
+		card.setAttribute('aria-expanded', String(active));
+		if (active) target.anchor.scrollIntoView?.({ behavior: 'smooth', block: 'center' });
+		if (target.record) this.options.onTrackChangeSelect?.(active ? target.key ?? null : null, target.record);
+		this.schedule();
 	}
 
 	mount(pages: HTMLElement[], annotations: Annotation[]) {
@@ -68,7 +104,9 @@ export class AnnotationRenderer {
 				used.add(partner);
 				const ins = a.kind === 'inserted' ? a : partner;
 				const del = a.kind === 'deleted' ? a : partner;
-				grouped.push({ ...ins, kind: 'replaced', ids: [del.change.id, ins.change.id], text: `${del.text} → ${ins.text}` });
+				// Anchor and card identity follow the first member in the document; both stay decidable.
+				const first = this.adjacent(a.anchor, partner.anchor) ? a : partner;
+				grouped.push({ ...first, kind: 'replaced', members: first === a ? [a, partner] : [partner, a], text: `${del.text} → ${ins.text}` });
 			} else grouped.push(a);
 			used.add(a);
 		}
@@ -245,6 +283,12 @@ export function annotationStyle(c: string): string {
 .${c}-tc-body time { display:block; color:#6b7280; font-size:11px !important; }
 .${c}-tc-preview { margin-top:4px; font-size:12px !important; max-height:5.6em; overflow:hidden; overflow-wrap:anywhere; }
 .${c}-tc-active .${c}-tc-preview { max-height:none; }
+.${c}-tc-members { margin-top:6px; display:flex; flex-direction:column; gap:4px; }
+.${c}-tc-member { padding:4px 6px; border-radius:4px; background:#f9fafb; }
+.${c}-tc-member-deleted { border-left:2px solid #dc3545; }
+.${c}-tc-member-inserted { border-left:2px solid #22a06b; }
+.${c}-tc-undecidable { margin-top:4px; color:#92400e; font-style:italic; }
+.${c}-tc-selected { outline:2px solid #3182ce; outline-offset:1px; }
 .${c}-tc-active, .${c}-tc-annotation:focus-visible { outline:2px solid #90cdf4; }
 .${c}-tc-inserted, .${c}-tc-moveTo { background:#e6f7ed; }
 .${c}-tc-deleted, .${c}-tc-moveFrom { background:#fde8e8; text-decoration:line-through; }
@@ -253,14 +297,26 @@ export function annotationStyle(c: string): string {
 }
 
 
-export function changeButtons(options: Options, build: typeof h, ids: string[]): HTMLElement {
-	if (!options.showTrackChangeButtons || !options.onTrackChangeDecision) return null;
+export function changeButtons(options: Options, build: typeof h, targets: DecisionTarget[]): HTMLElement {
+	targets = targets.filter(t => t.key != null);
+	if (!targets.length || !options.showTrackChangeButtons || !options.onTrackChangeDecision) return null;
 	return build({ tagName: 'span', className: `${options.className}-tc-actions`, children: ['accept', 'reject'].map((decision: 'accept' | 'reject') => ({
 		tagName: 'button', type: 'button', title: `${decision === 'accept' ? 'Accept' : 'Reject'} change`,
 		children: [decision === 'accept' ? 'Accept' : 'Reject'],
 		onclick: (event: MouseEvent) => {
 			event.stopPropagation();
-			ids.forEach(id => options.onTrackChangeDecision(id, decision));
+			targets.forEach(t => options.onTrackChangeDecision(t.key, decision, t.record));
 		}
 	})) }) as HTMLElement;
+}
+
+/** Marks the change(s) carrying `key` (anchors, cards, replaced-card members) as selected; null clears. */
+export function selectTrackChange(root: ParentNode, key: string | null, className = 'docx') {
+	const cls = `${className}-tc-selected`;
+	for (const el of Array.from(root.querySelectorAll<HTMLElement>('[data-tc-key],[data-tc-keys]'))) {
+		let keys: (string | null)[] = [];
+		if (el.dataset.tcKeys) { try { keys = JSON.parse(el.dataset.tcKeys); } catch { keys = []; } }
+		else keys = [el.dataset.tcKey];
+		el.classList.toggle(cls, key != null && keys.includes(key));
+	}
 }

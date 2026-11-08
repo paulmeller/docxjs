@@ -2,7 +2,10 @@ import { WordDocument } from './word-document';
 import { DocumentParser } from './document-parser';
 import { HtmlRenderer } from './html-renderer';
 import { h } from './html';
-import { collectChangeIds } from './track-changes';
+import { collectChangeKeys, indexTrackChanges, TrackChangeKeyFn, TrackChangeRecord } from './track-changes';
+
+export { TrackChangeRecord, TrackChangeRecordType, TrackChangeKeyFn, defaultChangeKey } from './track-changes';
+export { selectTrackChange } from './annotations';
 
 export type TrackChangesMode = 'inline' | 'margin' | 'floating';
 export type TrackChangeDecision = 'accept' | 'reject' | 'pending';
@@ -31,8 +34,15 @@ export interface Options {
     commentsMode: TrackChangesMode;
     trackChangesMarginWidth: string;
     showTrackChangeButtons: boolean;
+    /** Decisions keyed by the key `trackChangeKey` returns (default `part:wId:type#occurrence`), never by bare w:id. */
     trackChangeDecisions: Record<string, TrackChangeDecision>;
-    onTrackChangeDecision?: (id: string, decision: 'accept' | 'reject') => void;
+    /** Maps a change to the caller's key. Return null/undefined and the change is shown but cannot be decided. */
+    trackChangeKey?: TrackChangeKeyFn;
+    onTrackChangeDecision?: (key: string, decision: 'accept' | 'reject', record: TrackChangeRecord) => void;
+    /** A margin card (or one member of a "replaced" card) was clicked. */
+    onTrackChangeSelect?: (key: string | null, record: TrackChangeRecord) => void;
+    /** Card text for changes whose key function returned null. */
+    trackChangeUndecidableText: string;
     h: typeof h;
 }
 
@@ -61,6 +71,7 @@ export const defaultOptions: Options = {
     trackChangesMarginWidth: '220px',
     showTrackChangeButtons: true,
     trackChangeDecisions: {},
+    trackChangeUndecidableText: "Can't match this change",
     h: h
 };
 
@@ -91,20 +102,20 @@ export async function renderAsync(data: Blob | any, bodyContainer: HTMLElement, 
     return doc;
 }
 
-export function getTrackChangeIds(document: any): string[] {
-	const ids = new Set<string>();
-	collectChangeIds(document?.documentPart?.body, ids);
-	for (const part of document?.parts ?? []) {
-		collectChangeIds(part.rootElement, ids);
-		for (const note of part.notes ?? []) collectChangeIds(note, ids);
-	}
-	return Array.from(ids);
+/** Every change of the document (all parts), in document order, with part and occurrence. */
+export function getTrackChanges(document: any): TrackChangeRecord[] {
+	return indexTrackChanges(document);
 }
 
-export function acceptAllChanges(document: any): Record<string, TrackChangeDecision> {
-	return Object.fromEntries(getTrackChangeIds(document).map(id => [id, 'accept']));
+/** Decision keys of the document's changes (the default key unless `keyOf` is given). */
+export function getTrackChangeIds(document: any, keyOf?: TrackChangeKeyFn): string[] {
+	return collectChangeKeys(document, keyOf);
 }
 
-export function rejectAllChanges(document: any): Record<string, TrackChangeDecision> {
-	return Object.fromEntries(getTrackChangeIds(document).map(id => [id, 'reject']));
+export function acceptAllChanges(document: any, keyOf?: TrackChangeKeyFn): Record<string, TrackChangeDecision> {
+	return Object.fromEntries(getTrackChangeIds(document, keyOf).map(id => [id, 'accept']));
+}
+
+export function rejectAllChanges(document: any, keyOf?: TrackChangeKeyFn): Record<string, TrackChangeDecision> {
+	return Object.fromEntries(getTrackChangeIds(document, keyOf).map(id => [id, 'reject']));
 }

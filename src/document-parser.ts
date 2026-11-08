@@ -573,7 +573,7 @@ export class DocumentParser {
 
 	parseParagraphProperties(elem: Element, paragraph: WmlParagraph) {
 		const change = xml.element(elem, "pPrChange");
-		if (change) paragraph.formatChange = this.parseFormatChange(change);
+		if (change) (paragraph.formatChange = this.parseFormatChange(change)).formatKind = 'pPrChange';
 		this.parseDefaultProperties(elem, paragraph.cssStyle = {}, null, c => {
 			if (parseParagraphProperty(c, paragraph, xml))
 				return true;
@@ -808,7 +808,7 @@ export class DocumentParser {
 
 	parseRunProperties(elem: Element, run: WmlRun) {
 		const change = xml.element(elem, "rPrChange");
-		if (change) run.formatChange = this.parseFormatChange(change);
+		if (change) (run.formatChange = this.parseFormatChange(change)).formatKind = 'rPrChange';
 		this.parseDefaultProperties(elem, run.cssStyle = {}, null, c => {
 			switch (c.localName) {
 				case "rStyle":

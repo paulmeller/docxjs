@@ -113,3 +113,23 @@ So far I can't come up with final approach of parsing documents and final struct
 Contributing
 ------
 Please do not include contents of `./dist` folder in your PR's. Otherwise I most likely will reject it due to stability and security concerns.
+
+## Per-change identity (fork: 0.4.1-pl.2)
+
+Every tracked change gets a record `{ part, wId, type, author, date, text, occurrence }`:
+`part` is `body`, `hdr<n>`, `ftr<n>`, `fn` or `en`; `type` is `ins | del | moveFrom | moveTo | rPrChange | pPrChange`;
+`occurrence` counts changes with the same part, w:id and type in document order (w:id repeats across parts and
+within one). It does not depend on decisions or on what is rendered.
+
+- `docx.getTrackChanges(parsedDocument)` returns the records in document order.
+- Each rendered `<ins>`/`<del>` carries `data-tc-id` (the w:id, as before), `data-tc-part`, `data-tc-type`,
+  `data-tc-occurrence` and `data-tc-key` (or `data-tc-unmatched` when the key function returned null).
+- Decisions are keyed by a caller-supplied key, never the bare w:id: option `trackChangeKey(record) => string | null`
+  (default `part:wId:type#occurrence`). `trackChangeDecisions`, `acceptAllChanges(doc, keyFn?)`,
+  `rejectAllChanges(doc, keyFn?)` and `onTrackChangeDecision(key, decision, record)` all use it. A null key means
+  the change is shown with `trackChangeUndecidableText` and has no buttons.
+- A "replaced" margin card (adjacent del + ins by one author) groups visually only: it lists both members
+  (`.docx-tc-member`, each with its own `data-tc-key` and buttons) and `data-tc-keys` (JSON array). Each member
+  is decided separately.
+- `onTrackChangeSelect(key, record)` fires when a card or member row is clicked; `docx.selectTrackChange(root, key)`
+  marks the change(s) with that key (class `docx-tc-selected`).

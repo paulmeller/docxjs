@@ -118,6 +118,11 @@ export interface WmlChange extends OpenXmlElement {
     id: string;
     author: string;
     date: string;
+    /** Set on formatChange nodes: which properties element changed. */
+    formatKind?: 'rPrChange' | 'pPrChange';
+    /** Stamped by indexTrackChanges: the part id and the w:id/type occurrence in it. */
+    part?: string;
+    occurrence?: number;
 }
 
 export interface WmlNoteReference extends OpenXmlElement {

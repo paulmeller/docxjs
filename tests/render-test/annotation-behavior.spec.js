@@ -23,7 +23,7 @@ describe('Annotation behavior', function () {
     expect(div.querySelector('ins,del,.docx-tc-annotation')).toBeNull();
   });
 
-  it('groups replacements and applies a decision to both IDs', async () => {
+  it('groups replacements but decides each member on its own', async () => {
     const doc = await docx.parseAsync(await load('revision'));
     const paragraph = doc.documentPart.body.children[0];
     // Make the two changes adjacent without the source document's intervening space run.
@@ -31,11 +31,17 @@ describe('Annotation behavior', function () {
     const decisions = [];
     div.append(...await docx.renderDocument(doc, {
       renderChanges: true, trackChangesMode: 'margin',
-      onTrackChangeDecision: (id, value) => decisions.push([id, value])
+      onTrackChangeDecision: (key, value, record) => decisions.push([key, value, record.type])
     }));
     expect(div.querySelectorAll('.docx-tc-annotation-replaced').length).toBe(1);
-    div.querySelector('.docx-tc-annotation button').click();
-    expect(decisions).toEqual([['1', 'accept'], ['0', 'accept']]);
+    const card = div.querySelector('.docx-tc-annotation-replaced');
+    expect(JSON.parse(card.dataset.tcKeys)).toEqual(['body:0:ins#0', 'body:1:del#0']);
+    expect(card.querySelectorAll('.docx-tc-member').length).toBe(2);
+    // Only one member is decided; the other is untouched.
+    card.querySelector('[data-tc-key="body:1:del#0"] button').click();
+    expect(decisions).toEqual([['body:1:del#0', 'accept', 'del']]);
+    card.querySelector('[data-tc-key="body:0:ins#0"] button:last-child').click();
+    expect(decisions[1]).toEqual(['body:0:ins#0', 'reject', 'ins']);
   });
 
   it('suppresses buttons independently from revision markup', async () => {

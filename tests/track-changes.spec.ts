@@ -19,22 +19,25 @@ describe('revision decisions', () => {
 		});
 	}
 
-	it('collects nested, formatting, zero, and header IDs without duplicates', () => {
+	it('collects nested, formatting, zero, and header keys (a w:id repeated in another part stays distinct)', () => {
 		const insert = { type: DomType.Inserted, id: '0', children: [] };
 		const document = { documentPart: { body: { type: DomType.Document, children: [insert,
 			{ type: DomType.Run, formatChange: { type: DomType.FormatChange, id: 'f' } }] } },
 			parts: [{ rootElement: { type: DomType.Header, children: [insert, { type: DomType.MoveFrom, id: 'm' }] } }] };
-		expect(getTrackChangeIds(document)).toEqual(['0', 'f', 'm']);
-		expect(acceptAllChanges(document)).toEqual({ '0': 'accept', f: 'accept', m: 'accept' });
-		expect(rejectAllChanges(document)).toEqual({ '0': 'reject', f: 'reject', m: 'reject' });
+		// Keys are part:wId:type#occurrence, never the bare w:id.
+		const keys = ['body:0:ins#0', 'body:f:rPrChange#0', 'part0:0:ins#0', 'part0:m:moveFrom#0'];
+		expect(getTrackChangeIds(document)).toEqual(keys);
+		expect(acceptAllChanges(document)).toEqual(Object.fromEntries(keys.map(k => [k, 'accept'])));
+		expect(rejectAllChanges(document, r => `x-${r.wId}`)).toEqual({ 'x-0': 'reject', 'x-f': 'reject', 'x-m': 'reject' });
 	});
 
 	it('retains deleted text on reject-all with renderChanges off', () => {
 		const renderer = new HtmlRenderer();
-		renderer.options = { ...defaultOptions, trackChangeDecisions: { d: 'reject' } };
+		renderer.options = { ...defaultOptions, trackChangeDecisions: { 'body:d:del#0': 'reject' } };
 		renderer.h = value => value as any;
-		const result = renderer.renderDeleted({ type: DomType.Deleted, id: 'd', author: '', date: '',
-			children: [{ type: DomType.DeletedText, text: 'restored' } as any] });
+		const change = { type: DomType.Deleted, id: 'd', author: '', date: '', part: 'body', occurrence: 0,
+			children: [{ type: DomType.DeletedText, text: 'restored' } as any] } as WmlChange;
+		const result = renderer.renderDeleted(change);
 		expect(result).toEqual(['restored']);
 		expect(renderer.includeDeletedText).toBe(0);
 	});
