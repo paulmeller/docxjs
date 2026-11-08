@@ -21,7 +21,8 @@ describe('Annotation render fixtures', function () {
         const article = div.querySelector('article').cloneNode(true);
         // Keep upstream content styles and markup, remove only new revision presentation.
         article.querySelectorAll('[data-tc-id]').forEach(el => {
-          el.removeAttribute('data-tc-id');
+          // The per-change stamps are covered by per-change-keys.spec.js; the snapshot predates them.
+          [...el.attributes].filter(a => a.name.startsWith('data-tc-')).forEach(a => el.removeAttribute(a.name));
           el.classList.remove('docx-tc-inserted', 'docx-tc-deleted');
           if (!el.className) el.removeAttribute('class');
         });

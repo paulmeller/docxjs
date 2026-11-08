@@ -25,7 +25,7 @@ import { VmlElement } from './vml/vml';
 import { WmlCommentRangeStart, WmlCommentReference } from './comments/elements';
 import { cx, h, ns } from './html';
 import { Annotation, AnnotationRenderer, annotationStyle, changeButtons } from './annotations';
-import { changeVisibility } from './track-changes';
+import { changeVisibility, defaultChangeKey, indexTrackChanges, recordOf } from './track-changes';
 
 interface CellPos {
 	col: number;
@@ -72,6 +72,7 @@ export class HtmlRenderer {
 	postRenderTasks: any[] = [];
 	annotations: Annotation[] = [];
 	includeDeletedText = 0;
+	private changeKeys = new Map<WmlChange, string | null>();
 	h = h;
 
 	async render(document: WordDocument, options: Options): Promise<Node[]> {
@@ -84,6 +85,8 @@ export class HtmlRenderer {
 		this.tasks = [];
 		this.annotations = [];
 		this.includeDeletedText = 0;
+		this.changeKeys = new Map();
+		indexTrackChanges(document);
 
 		if (this.options.renderComments && globalThis.Highlight) {
 			this.commentHighlight = new Highlight();
@@ -1091,8 +1094,18 @@ section.${c}>footer { z-index: 1; }
 		return this.renderRevision(elem, "del");
 	}
 
+	/** The caller's key for a change (default `part:wId:type#occurrence`), or null when it cannot be decided. */
+	changeKey(elem: WmlChange): string | null {
+		if (this.changeKeys.has(elem)) return this.changeKeys.get(elem);
+		if (elem.part == null) indexTrackChanges(this.document);
+		const key = (this.options.trackChangeKey ?? defaultChangeKey)(recordOf(elem)) ?? null;
+		this.changeKeys.set(elem, key);
+		return key;
+	}
+
 	renderRevision(elem: WmlChange, tag: string): Node | Node[] {
-		const visibility = changeVisibility(elem, this.options.trackChangeDecisions?.[elem.id], this.options.renderChanges);
+		const key = this.changeKey(elem);
+		const visibility = changeVisibility(elem, key != null ? this.options.trackChangeDecisions?.[key] : undefined, this.options.renderChanges);
 		if (visibility === 'hidden') return null;
 		if (visibility === 'revision') return this.renderChange(elem, tag);
 		this.includeDeletedText++;
@@ -1104,13 +1117,20 @@ section.${c}>footer { z-index: 1; }
 		const mode = this.options.trackChangesMode;
 		const kind = elem.changeType || (tag === 'ins' ? 'inserted' : 'deleted');
 		const anchor = this.renderContainer(elem, tag as any, { dateTime: elem.date });
+		const key = this.changeKey(elem);
+		const record = recordOf(elem);
+		anchor.dataset.tcId = elem.id;
+		anchor.dataset.tcPart = record.part;
+		anchor.dataset.tcType = record.type;
+		anchor.dataset.tcOccurrence = String(record.occurrence);
+		if (key != null) anchor.dataset.tcKey = key;
+		else anchor.dataset.tcUnmatched = '';
 		if (mode !== 'inline') {
 			anchor.classList.add(`${this.className}-tc-${kind}`);
-			anchor.dataset.tcId = elem.id;
-			this.annotations.push({ change: elem, kind, anchor, text: anchor.textContent, mode });
+			this.annotations.push({ change: elem, kind, anchor, text: anchor.textContent, mode, key, record });
 		}
 		if (mode === 'inline') {
-			const buttons = changeButtons(this.options, this.h, [elem.id]);
+			const buttons = changeButtons(this.options, this.h, [{ key, record }]);
 			if (buttons) return [anchor, buttons];
 		}
 		return anchor;
@@ -1383,12 +1403,14 @@ section.${c}>footer { z-index: 1; }
 	}
 
 	toHTML(elem: OpenXmlElement, ns: ns, tagName: string, children: Node[] = null) {
-		const decision = elem.formatChange && this.options.trackChangeDecisions?.[elem.formatChange.id];
+		const formatKey = elem.formatChange ? this.changeKey(elem.formatChange) : null;
+		const decision = formatKey != null ? this.options.trackChangeDecisions?.[formatKey] : undefined;
 		const rendered = decision === 'reject' ? { ...elem, cssStyle: elem.formatChange.previousStyle } : elem;
 		const result = this.h(this.toH(rendered, ns, tagName, children)) as HTMLElement;
 		if (elem.formatChange && decision !== 'accept' && decision !== 'reject' && this.options.renderChanges && this.options.trackChangesMode !== 'inline') {
 			this.annotations.push({ change: elem.formatChange, kind: 'formatChange', anchor: result,
-				text: elem.formatChange.formatDescription, mode: this.options.trackChangesMode });
+				text: elem.formatChange.formatDescription, mode: this.options.trackChangesMode,
+				key: formatKey, record: recordOf(elem.formatChange) });
 		}
 		return result as any;
 	}

@@ -1,6 +1,6 @@
 {
   "name": "docx-preview",
-  "version": "0.4.1",
+  "version": "0.4.1-pl.2",
   "license": "Apache-2.0",
   "keywords": [
     "word",
@@ -17,15 +17,16 @@
     "jszip": ">=3.0.0"
   },
   "devDependencies": {
-    "rollup": "^4.9.1",
     "@rollup/plugin-terser": "^0.4.4",
     "@rollup/plugin-typescript": "^12.1.4",
     "diff": "^8.0.2",
     "jasmine-core": "^5.1.0",
+    "jsdom": "^26.1.0",
     "karma": "^6.3.9",
     "karma-chrome-launcher": "^3.1.0",
     "karma-firefox-launcher": "^2.1.2",
     "karma-jasmine": "^5.0.0",
+    "rollup": "^4.9.1",
     "tslib": "^2.4.0",
     "typescript": "^5.0.3",
     "vitest": "^4.1.12"
@@ -36,7 +37,7 @@
     "watch": "rollup --config rollup.config.mjs --watch",
     "e2e": "karma start karma.conf.cjs --single-run",
     "e2e-watch": "karma start karma.conf.cjs",
-    "test": "vitest run tests/annotation-layout.spec.ts"
+    "test": "vitest run tests/*.spec.ts"
   },
   "files": [
     "dist"
